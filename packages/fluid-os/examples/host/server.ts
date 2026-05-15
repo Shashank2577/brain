@@ -7,12 +7,28 @@ import { calendarApp } from "../apps/calendar/manifest.js";
 import { contentApp } from "../apps/content/manifest.js";
 import { slidesApp } from "../apps/slides/manifest.js";
 import { dispatchApp } from "../apps/dispatch/manifest.js";
+import { crmApp } from "../apps/crm/manifest.js";
+import { meetingsApp } from "../apps/meetings/manifest.js";
 
 const PORT = Number(process.env.FLUID_OS_PORT ?? 4100);
 const SECRET = process.env.FLUID_OS_SECRET ?? "dev-secret-must-be-at-least-32-bytes-long!!";
+const PUBLIC_URL = process.env.FLUID_OS_PUBLIC_URL ?? `http://localhost:${PORT}`;
+const RUN_DEMO = process.env.FLUID_OS_DEMO !== "0";
 
 async function main() {
-  const os = new FluidOs({ secret: SECRET });
+  const os = new FluidOs({
+    secret: SECRET,
+    allowDevSignin: true,
+    github:
+      process.env.FLUID_OS_GITHUB_CLIENT_ID && process.env.FLUID_OS_GITHUB_CLIENT_SECRET
+        ? {
+            clientId: process.env.FLUID_OS_GITHUB_CLIENT_ID,
+            clientSecret: process.env.FLUID_OS_GITHUB_CLIENT_SECRET,
+            callbackUrl: `${PUBLIC_URL}/_fluid-os/auth/github/callback`,
+          }
+        : undefined,
+  });
+
   os.install(notesApp);
   os.install(tasksApp);
   os.install(mailApp);
@@ -20,9 +36,11 @@ async function main() {
   os.install(contentApp);
   os.install(slidesApp);
   os.install(dispatchApp);
+  os.install(crmApp);
+  os.install(meetingsApp);
 
   const server = createServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+    const url = new URL(req.url ?? "/", PUBLIC_URL);
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
     const body = chunks.length ? Buffer.concat(chunks).toString("utf8") : undefined;
@@ -42,16 +60,22 @@ async function main() {
     const response = await os.handle(request);
     res.statusCode = response.status;
     response.headers.forEach((v, k) => res.setHeader(k, v));
-    const text = await response.text();
-    res.end(text);
+    const buf = Buffer.from(await response.arrayBuffer());
+    res.end(buf);
   });
 
   await new Promise<void>((r) => server.listen(PORT, r));
-  console.log(`Fluid OS running at http://localhost:${PORT}`);
-  console.log(os.registry.describeForAgent());
+  console.log(`\nFluid OS running at ${PUBLIC_URL}`);
+  console.log(`  Shell:           ${PUBLIC_URL}/`);
+  console.log(`  Installed apps:  ${os.registry.listApps().map((a) => a.id).join(", ")}`);
+  console.log(`  Capabilities:    ${os.registry.listCapabilities().length}`);
 
-  await demo(`http://localhost:${PORT}`, os);
-  server.close();
+  if (RUN_DEMO) {
+    await crossAppDemo(PUBLIC_URL, os);
+    server.close();
+  } else {
+    console.log(`\n(Demo skipped — server staying up. Open ${PUBLIC_URL}/ in a browser.)`);
+  }
 }
 
 function clientFor(osUrl: string, os: FluidOs, appId: string, user: { id: string; email: string; name?: string }) {
@@ -62,77 +86,65 @@ function clientFor(osUrl: string, os: FluidOs, appId: string, user: { id: string
   });
 }
 
-async function demo(osUrl: string, os: FluidOs) {
+async function crossAppDemo(osUrl: string, os: FluidOs) {
   const alice = { id: "u_alice", email: "alice@example.com", name: "Alice" };
-  const bob = { id: "u_bob", email: "bob@example.com", name: "Bob" };
 
-  const dispatch = clientFor(osUrl, os, "dispatch", alice);
-  const content = clientFor(osUrl, os, "content", alice);
-  const slides = clientFor(osUrl, os, "slides", alice);
+  const crm = clientFor(osUrl, os, "crm", alice);
+  const meetings = clientFor(osUrl, os, "meetings", alice);
   const calendar = clientFor(osUrl, os, "calendar", alice);
-  const mail = clientFor(osUrl, os, "mail", bob);
+  const content = clientFor(osUrl, os, "content", alice);
 
   console.log("\n========== cross-app demo ==========\n");
 
-  console.log("[apps]");
-  for (const a of await dispatch.listApps()) console.log(`  - ${a.id.padEnd(10)} ${a.name}`);
+  console.log("[CRM] create a contact + deal");
+  const contact = (await crm.call("crm.create-contact", {
+    name: "Carol Chen",
+    email: "carol@example.com",
+    company: "Acme",
+  })) as { id: string };
+  await crm.call("crm.create-deal", { contactId: contact.id, title: "Acme — Pro plan", amount: 12000 });
 
-  console.log("\n[capabilities]");
-  for (const c of await dispatch.listCapabilities()) console.log(`  - ${c.id.padEnd(36)} ${c.description}`);
-
-  console.log("\n[1] dispatch.broadcast → fans out to mail.send-email (3 recipients)");
-  const broadcast = await dispatch.call("dispatch.broadcast", {
-    recipients: ["bob@example.com", "carol@example.com", "dave@example.com"],
-    subject: "Beta launch on Monday",
-    body: "We're shipping the OS to the beta cohort. Reply if you can attend the kickoff.",
+  console.log("[CRM → mail] log outreach (crm.log-outreach calls mail.send-email)");
+  const outreach = await crm.call("crm.log-outreach", {
+    contactId: contact.id,
+    subject: "Pro plan — next steps",
+    body: "Hi Carol, sharing a one-pager and a couple of timeslots for a quick review.",
   });
-  console.log("    →", broadcast);
+  console.log("    →", outreach);
 
-  console.log("\n[2] Bob (a different user) checks his inbox via mail.list-inbox");
-  const bobInbox = await mail.call("mail.list-inbox", { limit: 5 });
-  console.log("    →", bobInbox);
-
-  console.log("\n[3] content.create-document → seed for slides");
-  const doc = (await content.call("content.create-document", {
-    title: "Beta launch plan",
-    body:
-      "Goals\nWin 5 beta logos.\nGet feedback on capability registry shape.\n\nRisks\nRPC latency on cold function starts.\nCapability namespace collisions.\n\nNext steps\nShip launcher UI.\nRetrofit mail + calendar.\nWrite migration guide.",
-  })) as { id: string; title: string };
-  console.log("    →", doc);
-
-  console.log("\n[4] slides.create-deck-from-document → reads via content.get-document");
-  const deck = await slides.call("slides.create-deck-from-document", { documentId: doc.id, maxSlides: 6 });
-  console.log("    →", deck);
-
-  console.log("\n[5] dispatch.send-and-schedule → calls mail.find-contact + calendar.check-availability + mail.send-email + calendar.create-event");
+  console.log("[CRM → calendar] schedule meeting (crm.schedule-meeting calls calendar.create-event)");
   const now = Date.now();
-  const tomorrow10 = now + 24 * 60 * 60 * 1000;
-  const tomorrow11 = tomorrow10 + 60 * 60 * 1000;
-  const orchestrated = await dispatch.call("dispatch.send-and-schedule", {
-    contactName: "Carol",
-    subject: "Quick beta sync",
-    body: "Got 30 min tomorrow to walk through what's working?",
-    followUp: { startsAt: tomorrow10, endsAt: tomorrow11 },
+  const meet = await crm.call("crm.schedule-meeting", {
+    contactId: contact.id,
+    title: "Carol × Alice — Pro plan",
+    startsAt: now + 60 * 60 * 1000,
+    endsAt: now + 90 * 60 * 1000,
   });
-  console.log("    →", orchestrated);
+  console.log("    →", meet);
 
-  console.log("\n[6] calendar.list-events shows the booked follow-up");
+  console.log("[Meetings] upload a recording");
+  const rec = (await meetings.call("meetings.upload-recording", {
+    source: { kind: "s3", ref: "s3://fluid-demo/recordings/carol-sync.mp4" },
+    durationSec: 28 * 60,
+  })) as { id: string };
+  console.log("    →", rec);
+
+  console.log("[Meetings] process-recording → transcribe + extract → content.create-document + tasks.create + link to calendar");
+  const processed = await meetings.call("meetings.process-recording", {
+    recordingId: rec.id,
+    linkToCalendarWithinMinutes: 240,
+  });
+  console.log("    →", processed);
+
+  console.log("\n[content] the document the meeting created:");
+  console.log("    →", await content.call("content.list-documents", {}));
+  console.log("\n[calendar] events on the user's calendar:");
   console.log("    →", await calendar.call("calendar.list-events", {}));
+  console.log("\n[CRM] activity log on Carol:");
+  console.log("    →", await crm.call("crm.list-activity", { contactId: contact.id }));
 
-  console.log("\n[7] dispatch.send-and-schedule again at the same slot → calendar.check-availability rejects it");
-  try {
-    await dispatch.call("dispatch.send-and-schedule", {
-      contactName: "Dave",
-      subject: "Conflicting sync",
-      body: "Same slot — should fail",
-      followUp: { startsAt: tomorrow10, endsAt: tomorrow11 },
-    });
-    console.log("    → UNEXPECTED success");
-  } catch (err) {
-    console.log("    → rejected:", (err as Error).message);
-  }
-
-  console.log("\n====================================\n");
+  console.log("\n====================================");
+  console.log("Open " + osUrl + "/ in a browser to drive any of these capabilities from the shell UI.\n");
 }
 
 main().catch((err) => {

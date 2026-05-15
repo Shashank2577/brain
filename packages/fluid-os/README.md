@@ -136,10 +136,34 @@ The five "real-template" manifests under `examples/apps/{mail,calendar,content,s
 
 Once you do that, no other template needs to reimplement `find-contact`, `send-email`, `check-availability`, `get-document`, etc. They look it up in `registry.listCapabilities()` and call it via `ctx.call(...)`.
 
-## What's intentionally not in this first cut
+## Shell UI
 
-- React host shell (launcher UI + iframe-mounted app frame). The headless host runs; the visual launcher is the next slice.
-- Persistent capability discovery across processes (today the registry is in-memory; in a multi-process deployment you'd back it with the existing SQL layer).
-- Per-capability permission scopes (the `scope` field is plumbed through the JWT but no caller is checking it yet).
+`http://localhost:4100/` serves a React + Tailwind + shadcn-style shell that matches the templates' visual language:
+
+- **Sign-in** with GitHub OAuth (set `FLUID_OS_GITHUB_CLIENT_ID` / `FLUID_OS_GITHUB_CLIENT_SECRET`) or dev-mode buttons. The GitHub profile is mapped onto a single OS user record (keyed by GitHub id + email); every app sees the same user through `ctx.user`.
+- **Sidebar** lists every installed app, with a capability count badge.
+- **App detail pane** shows the app's name, URL, routes, what it `consumes` from other apps, and an interactive card per capability where you can edit JSON input and invoke the capability over the live RPC.
+
+Build it with `pnpm build:shell`, then run `pnpm demo:server` (no demo flow) or `pnpm demo` (cross-app dance + server). The Vite dev server (`pnpm dev:shell`) proxies `/_fluid-os/*` to the OS for hot-reload editing.
+
+## Creating new apps
+
+`pnpm create-app print-registry` prints every installed app + capability so a developer (or Claude) can see what to consume before scaffolding. Then:
+
+```
+pnpm create-app billing \
+  --description "Invoices and subscriptions." \
+  --consumes "mail.send-email,crm.list-contacts" \
+  --capability "create-invoice:Create an invoice for a contact." \
+  --capability "list-invoices:List the user's invoices."
+```
+
+The scaffolder validates every `--consumes` id against the live registry and warns on unknown capabilities. The generated manifest has stub handlers and consumes wiring. See [CREATING-APPS.md](./CREATING-APPS.md) for the full Claude flow.
+
+## What's still ahead
+
+- Persistent registry across processes (today it's in-memory; back it with SQL for multi-process deployments).
+- Per-capability permission scopes (`scope` is in the JWT, but no caller checks it yet).
+- Realtime channels — apps can call each other synchronously today; event fan-out is the next obvious primitive.
 
 These are deliberate cuts so the contract is small and the rest can grow against a stable core.

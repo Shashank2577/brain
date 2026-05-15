@@ -5,19 +5,27 @@
   "private": true,
   "description": "Fluid OS — host shell, capability registry, and inter-app RPC for an ecosystem of independent agent-native apps that share identity and discover each other's features.",
   "license": "MIT",
+  "bin": {
+    "fluid-os": "./src/cli/create-app.ts"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./manifest": "./src/manifest/index.ts",
     "./registry": "./src/registry.ts",
     "./identity": "./src/identity/index.ts",
+    "./auth": "./src/auth/index.ts",
     "./rpc/server": "./src/rpc/server.ts",
     "./rpc/client": "./src/rpc/client.ts",
     "./agent": "./src/agent/tools.ts",
     "./host": "./src/host/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "demo": "tsx examples/host/server.ts"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.shell.json",
+    "build:shell": "vite build",
+    "dev:shell": "vite",
+    "demo": "pnpm build:shell && tsx examples/host/server.ts",
+    "demo:server": "tsx examples/host/server.ts",
+    "create-app": "tsx src/cli/create-app.ts"
   },
   "dependencies": {
     "h3": "catalog:",
@@ -26,8 +34,19 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@tabler/icons-react": "catalog:",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "^24.0.0",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "clsx": "^2.1.1",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "catalog:",
     "tsx": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite": "catalog:"
   }
 }
