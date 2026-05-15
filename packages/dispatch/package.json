@@ -94,6 +94,7 @@
   },
   "devDependencies": {
     "@agent-native/core": "workspace:*",
+    "@agent-native/fluid-os": "workspace:*",
     "@react-router/dev": "^7.13.1",
     "@types/node": "^24.2.1",
     "@types/react": "^19.2.14",

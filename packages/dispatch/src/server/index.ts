@@ -74,5 +74,18 @@ export { default as dispatchIntegrationsPlugin } from "./plugins/integrations.js
 export { default as dispatchAgentChatPlugin } from "./plugins/agent-chat.js";
 export { default as dispatchDbPlugin } from "./plugins/db.js";
 export { default as dispatchCoreRoutesPlugin } from "./plugins/core-routes.js";
+export {
+  default as dispatchCapabilityRegistryPlugin,
+  createCapabilityRegistryPlugin,
+  buildRegistry,
+  dispatchCapability,
+  actionToCapability,
+  discoverTemplatesDir,
+  scanTemplatesForCapabilities,
+  getCapabilityRegistry,
+  type CapabilityRegistryPluginOptions,
+  type RegistryRpcResponse,
+  type ActionLike,
+} from "./plugins/capability-registry.js";
 
 export type { DispatchConfig } from "../config.js";
