@@ -86,9 +86,9 @@ describe("createBedrockEngine", () => {
     vi.resetModules();
     vi.unstubAllEnvs();
     vi.doUnmock("@aws-sdk/client-bedrock-runtime");
-    delete process.env.AWS_REGION;
-    delete process.env.AWS_DEFAULT_REGION;
-    delete process.env.AWS_PROFILE;
+    delete process.env.AWS_REGION; // guard:allow-env-credential — test setup
+    delete process.env.AWS_DEFAULT_REGION; // guard:allow-env-credential — test setup
+    delete process.env.AWS_PROFILE; // guard:allow-env-credential — test setup
     delete process.env.AWS_ACCESS_KEY_ID; // guard:allow-env-credential — test setup
     delete process.env.AWS_SECRET_ACCESS_KEY; // guard:allow-env-credential — test setup
     delete process.env.AWS_SESSION_TOKEN; // guard:allow-env-credential — test setup
@@ -381,9 +381,9 @@ describe("createBedrockEngine", () => {
   });
 
   it("defaults region to us-east-1 and reads AWS env vars when fallback is allowed", async () => {
-    process.env.AWS_REGION = "eu-west-1";
-    process.env.AWS_ACCESS_KEY_ID = "AKIAFROMENV";
-    process.env.AWS_SECRET_ACCESS_KEY = "secretfromenv";
+    process.env.AWS_REGION = "eu-west-1"; // guard:allow-env-credential — test setup
+    process.env.AWS_ACCESS_KEY_ID = "AKIAFROMENV"; // guard:allow-env-credential — test setup
+    process.env.AWS_SECRET_ACCESS_KEY = "secretfromenv"; // guard:allow-env-credential — test setup
 
     const send = mockSendReturning([
       bedrockChunk({
