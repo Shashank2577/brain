@@ -57,6 +57,20 @@ export const AGENT_MODEL_CONFIG = {
       "claude-haiku-4-5-20251001",
     ],
   },
+  bedrock: {
+    /**
+     * Default targets Claude 3.5 Sonnet on Bedrock — broadly available in
+     * us-east-1 without per-account access approval and matches the model
+     * named in the Phase 5 acceptance criteria.
+     */
+    defaultModel: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+    supportedModels: [
+      "anthropic.claude-3-5-sonnet-20240620-v1:0",
+      "anthropic.claude-3-haiku-20240307-v1:0",
+      "anthropic.claude-3-sonnet-20240229-v1:0",
+      "anthropic.claude-3-opus-20240229-v1:0",
+    ],
+  },
   aiSdk: {
     anthropic: {
       defaultModel: ANTHROPIC_DEFAULT_MODEL_ID,
@@ -117,6 +131,7 @@ export const AGENT_MODEL_CONFIG = {
 
 export const BUILDER_MODEL_CONFIG = AGENT_MODEL_CONFIG.builder;
 export const ANTHROPIC_MODEL_CONFIG = AGENT_MODEL_CONFIG.anthropic;
+export const BEDROCK_MODEL_CONFIG = AGENT_MODEL_CONFIG.bedrock;
 export const AI_SDK_MODEL_CONFIG = AGENT_MODEL_CONFIG.aiSdk;
 
 export type AISDKProvider = keyof typeof AI_SDK_MODEL_CONFIG;

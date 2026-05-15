@@ -28,6 +28,12 @@ import {
   BUILDER_DEFAULT_MODEL,
   BUILDER_SUPPORTED_MODELS,
 } from "./builder-engine.js";
+import {
+  createBedrockEngine,
+  BEDROCK_CAPABILITIES,
+  BEDROCK_DEFAULT_MODEL,
+  BEDROCK_SUPPORTED_MODELS,
+} from "./providers/bedrock.js";
 
 let _registered = false;
 
@@ -66,6 +72,27 @@ export function registerBuiltinEngines(): void {
     supportedModels: ANTHROPIC_SUPPORTED_MODELS,
     requiredEnvVars: ["ANTHROPIC_API_KEY"],
     create: (config) => createAnthropicEngine(config),
+  });
+
+  // ── Amazon Bedrock ─────────────────────────────────────────────────────────
+  // Uses the AWS SDK default credential chain (env → ~/.aws/credentials →
+  // IAM role) so requiredEnvVars is intentionally empty. The registry's
+  // detectEngineFromEnv() skips entries with no required vars, which means
+  // Bedrock is only picked when a user explicitly selects it (via
+  // AGENT_ENGINE=bedrock or the settings UI). This prevents Bedrock from
+  // being silently chosen on machines that happen to have AWS creds set
+  // for unrelated reasons.
+  registerAgentEngine({
+    name: "bedrock",
+    label: "Amazon Bedrock (Claude)",
+    description:
+      "Anthropic Claude models hosted on Amazon Bedrock. Uses the AWS SDK credential chain (env vars, ~/.aws/credentials, or instance role). Pin region via AWS_REGION (default us-east-1).",
+    installPackage: "@aws-sdk/client-bedrock-runtime",
+    capabilities: BEDROCK_CAPABILITIES,
+    defaultModel: BEDROCK_DEFAULT_MODEL,
+    supportedModels: BEDROCK_SUPPORTED_MODELS,
+    requiredEnvVars: [],
+    create: (config) => createBedrockEngine(config),
   });
 
   // ── Vercel AI SDK providers ────────────────────────────────────────────────

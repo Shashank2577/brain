@@ -162,6 +162,7 @@
     "@ai-sdk/groq": ">=3",
     "@ai-sdk/mistral": ">=3",
     "@ai-sdk/openai": ">=3",
+    "@aws-sdk/client-bedrock-runtime": ">=3",
     "@openrouter/ai-sdk-provider": ">=2",
     "@supabase/supabase-js": ">=2",
     "@tabler/icons-react": ">=3",
@@ -208,6 +209,9 @@
       "optional": true
     },
     "@ai-sdk/cohere": {
+      "optional": true
+    },
+    "@aws-sdk/client-bedrock-runtime": {
       "optional": true
     },
     "ai-sdk-ollama": {
@@ -269,6 +273,7 @@
     "@ai-sdk/openai": "^3.0.53",
     "@assistant-ui/react": "^0.12.19",
     "@assistant-ui/react-markdown": "^0.12.6",
+    "@aws-sdk/client-bedrock-runtime": "^3.1048.0",
     "@react-router/dev": "^7.13.1",
     "@react-router/fs-routes": "^7.13.1",
     "@supabase/supabase-js": "^2.49.0",

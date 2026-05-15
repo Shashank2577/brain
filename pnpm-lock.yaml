@@ -551,6 +551,9 @@ importers:
       '@agent-native/core':
         specifier: workspace:*
         version: link:../core
+      '@agent-native/fluid-os':
+        specifier: workspace:*
+        version: link:../fluid-os
       '@react-router/dev':
         specifier: ^7.13.1
         version: 7.14.0(@types/node@24.12.2)(jiti@2.6.1)(lightningcss@1.32.0)(react-router@7.14.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(terser@5.46.1)(tsx@4.21.0)(typescript@6.0.3)(vite@8.0.3(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@types/node@24.12.2)(esbuild@0.27.7)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))(wrangler@4.81.0)(yaml@2.8.3)
