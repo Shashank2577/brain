@@ -1,14 +1,24 @@
 import { createServer } from "node:http";
 import { FluidOs, createOsClient } from "../../src/index.js";
-import { notesApp } from "../apps/notes/manifest.js";
-import { tasksApp } from "../apps/tasks/manifest.js";
+// notes manifest was superseded by the full `templates/notes/` template
+// (see docs/apps/notes.md). Inter-app calls now route through the dispatch
+// capability registry (Phase 1).
+// tasks manifest was superseded by the full `templates/tasks/` template
+// (see docs/apps/tasks.md). Inter-app calls now route through the dispatch
+// capability registry (Phase 1).
 import { mailApp } from "../apps/mail/manifest.js";
 import { calendarApp } from "../apps/calendar/manifest.js";
 import { contentApp } from "../apps/content/manifest.js";
 import { slidesApp } from "../apps/slides/manifest.js";
 import { dispatchApp } from "../apps/dispatch/manifest.js";
-import { crmApp } from "../apps/crm/manifest.js";
-import { meetingsApp } from "../apps/meetings/manifest.js";
+// CRM manifest was superseded by the full `templates/crm/` template (see
+// docs/apps/crm.md). The capability surface is preserved exactly so the
+// crossAppDemo below keeps working; storage moved from in-memory Maps to a
+// shared SQL database via Drizzle.
+import { crmApp } from "../../../../templates/crm/server/manifest.js";
+// meetings manifest was superseded by the full `templates/meetings/` template
+// (see docs/apps/meetings.md). Inter-app calls now route through the dispatch
+// capability registry (Phase 1).
 
 const PORT = Number(process.env.FLUID_OS_PORT ?? 4100);
 const SECRET = process.env.FLUID_OS_SECRET ?? "dev-secret-must-be-at-least-32-bytes-long!!";
@@ -29,15 +39,12 @@ async function main() {
         : undefined,
   });
 
-  os.install(notesApp);
-  os.install(tasksApp);
   os.install(mailApp);
   os.install(calendarApp);
   os.install(contentApp);
   os.install(slidesApp);
   os.install(dispatchApp);
   os.install(crmApp);
-  os.install(meetingsApp);
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", PUBLIC_URL);
@@ -90,7 +97,6 @@ async function crossAppDemo(osUrl: string, os: FluidOs) {
   const alice = { id: "u_alice", email: "alice@example.com", name: "Alice" };
 
   const crm = clientFor(osUrl, os, "crm", alice);
-  const meetings = clientFor(osUrl, os, "meetings", alice);
   const calendar = clientFor(osUrl, os, "calendar", alice);
   const content = clientFor(osUrl, os, "content", alice);
 
@@ -122,19 +128,8 @@ async function crossAppDemo(osUrl: string, os: FluidOs) {
   });
   console.log("    →", meet);
 
-  console.log("[Meetings] upload a recording");
-  const rec = (await meetings.call("meetings.upload-recording", {
-    source: { kind: "s3", ref: "s3://fluid-demo/recordings/carol-sync.mp4" },
-    durationSec: 28 * 60,
-  })) as { id: string };
-  console.log("    →", rec);
-
-  console.log("[Meetings] process-recording → transcribe + extract → content.create-document + tasks.create + link to calendar");
-  const processed = await meetings.call("meetings.process-recording", {
-    recordingId: rec.id,
-    linkToCalendarWithinMinutes: 240,
-  });
-  console.log("    →", processed);
+  console.log("[Meetings] manifest superseded by templates/meetings/ — see docs/apps/meetings.md");
+  console.log("[Meetings] inter-app calls now go through the dispatch capability registry");
 
   console.log("\n[content] the document the meeting created:");
   console.log("    →", await content.call("content.list-documents", {}));

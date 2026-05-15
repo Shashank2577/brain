@@ -1,0 +1,12 @@
+node_modules
+dist
+.generated
+.react-router
+.netlify
+.cache
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+:memory:*
+.env
+.env.local
