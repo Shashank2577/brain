@@ -1,5 +1,18 @@
 # Agent-Native Framework
 
+> **Active branch architecture (`os-shell` branch, 2026-05-16):** This repo is being reorganised into a Fluid super-app. One shell, one identity, many composable mini-apps that talk to each other through a typed capability registry. See [`docs/README.md`](docs/README.md) for the spec ecosystem, [`PLAN.md`](PLAN.md) for the phased plan, and [`docs/decisions/`](docs/decisions/) for the six load-bearing ADRs. New AI sessions on this branch should read those before writing code.
+>
+> **Key decisions on the `os-shell` branch** (full reasoning in the ADRs):
+>
+> - Every mini-app has a UI (ADR-001) — manifest-only apps are deprecated
+> - Web shell uses iframes for mini-app content (ADR-002) — reversible later, no architectural commitment
+> - One shared workspace DB + one `BETTER_AUTH_SECRET` for SSO across mini-apps (ADR-003)
+> - Capability registry + RPC live inside dispatch as a plugin; the previous standalone host has been deleted and `packages/fluid-os/` is now a library (ADR-004, Phase 4)
+> - Amazon Bedrock joins Claude / OpenAI / Gemini / OpenRouter as a first-class LLM provider (ADR-005)
+> - Mobile foundation locks the backend API; UI tech per-platform decided at Phase 8 (ADR-006)
+>
+> Templates are the canonical mini-app shape: `templates/<name>/` with Nitro backend + Drizzle schema + actions + React UI. Capabilities auto-derive from each template's `actions/*.ts`. Inter-app communication: `ctx.call("<app>.<capability>", input)` propagates user identity (NOT calling app identity) to the target action.
+
 ## Core Philosophy
 
 Agent-native is a framework for building apps where the AI agent and the UI are equal partners. Everything the UI can do, the agent can do. Everything the agent can do, the UI can do. They share the same database, the same state, and they always stay in sync.

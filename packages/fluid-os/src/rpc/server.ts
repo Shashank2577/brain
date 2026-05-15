@@ -1,8 +1,20 @@
-import type { IdentityProvider } from "../identity/session.js";
+/**
+ * Registry-only RPC handler. After Phase 4 the fluid-os package is a library
+ * shipped to dispatch (which wires identity, agent, and cookies via its own
+ * Nitro plugin at `packages/dispatch/src/server/plugins/capability-registry.ts`).
+ *
+ * This handler is preserved for two consumers:
+ *   1. Mobile shells that want a thin standalone RPC layer over an existing
+ *      capability registry — they pass `resolveUser` and (optionally) `agent`.
+ *   2. Integration tests / fixtures that need an HTTP front for a programmatic
+ *      registry without booting the full dispatch server.
+ *
+ * Identity is now caller-supplied (`resolveUser(req)`) rather than baked in
+ * via JWT — that's what dispatch supersedes. Anything new should call into
+ * the dispatch plugin instead.
+ */
 import type { CapabilityRegistry } from "../registry.js";
-import type { CapabilityContext } from "../manifest/types.js";
-import type { AgentClient } from "../agent/client.js";
-import { StubAgentClient } from "../agent/client.js";
+import type { CapabilityContext, OsUser } from "../manifest/types.js";
 import {
   LIST_APPS_PATH,
   LIST_CAPABILITIES_PATH,
@@ -13,9 +25,22 @@ import {
 
 export interface RpcHandlerOpts {
   registry: CapabilityRegistry;
-  identity: IdentityProvider;
-  osAppId?: string;
-  agent?: AgentClient;
+  /**
+   * Resolve the calling user from the inbound request. Return `null` to reject
+   * with a 401. Implementations should validate any bearer token / session
+   * cookie they trust.
+   */
+  resolveUser: (req: Request) => Promise<OsUser | null> | OsUser | null;
+  /**
+   * Optional agent escalation. When omitted, `ctx.agent(prompt)` returns the
+   * empty string — useful for tests and shells that don't need agent fallback.
+   */
+  agent?: (opts: {
+    prompt: string;
+    user: OsUser;
+    callerAppId: string;
+    schema?: unknown;
+  }) => Promise<string>;
 }
 
 export interface RpcHandler {
@@ -23,9 +48,15 @@ export interface RpcHandler {
 }
 
 export function createRpcHandler(opts: RpcHandlerOpts): RpcHandler {
-  const { registry, identity } = opts;
-  const osAppId = opts.osAppId ?? "fluid-os";
-  const agent: AgentClient = opts.agent ?? new StubAgentClient();
+  const { registry, resolveUser } = opts;
+  const agent =
+    opts.agent ??
+    (async (_a: {
+      prompt: string;
+      user: OsUser;
+      callerAppId: string;
+      schema?: unknown;
+    }) => "");
 
   return {
     async handle(req: Request): Promise<Response> {
@@ -42,18 +73,14 @@ export function createRpcHandler(opts: RpcHandlerOpts): RpcHandler {
       }
 
       if (req.method === "POST" && path === RPC_PATH) {
-        const auth = req.headers.get("authorization") ?? "";
-        const match = auth.match(/^Bearer (.+)$/);
-        if (!match) return errorResponse(401, "missing_token", "Authorization Bearer token required");
-
         const callerAppId = req.headers.get("x-fluid-app-id");
-        if (!callerAppId) return errorResponse(400, "missing_caller", "x-fluid-app-id header required");
+        if (!callerAppId) {
+          return errorResponse(400, "missing_caller", "x-fluid-app-id header required");
+        }
 
-        let claims;
-        try {
-          claims = await identity.verify(match[1], { audienceAppId: osAppId });
-        } catch (err) {
-          return errorResponse(401, "invalid_token", (err as Error).message);
+        const user = await resolveUser(req);
+        if (!user) {
+          return errorResponse(401, "unauthenticated", "resolveUser returned null");
         }
 
         let body: RpcRequest;
@@ -76,7 +103,6 @@ export function createRpcHandler(opts: RpcHandlerOpts): RpcHandler {
           return errorResponse(400, "invalid_input", parsed.error.message);
         }
 
-        const user = identity.toUser(claims);
         const ctx: CapabilityContext = {
           user,
           caller: { appId: callerAppId },
@@ -87,7 +113,7 @@ export function createRpcHandler(opts: RpcHandlerOpts): RpcHandler {
             return (await sub.def.handler(subInput, { ...ctx, caller: { appId: resolved.app.id } })) as never;
           },
           agent: async (prompt, agentOpts) => {
-            return agent.ask({ prompt, user, callerAppId, schema: agentOpts?.schema });
+            return agent({ prompt, user, callerAppId, schema: agentOpts?.schema });
           },
         };
 
