@@ -73,8 +73,12 @@ const PRIMARY_NAV_ITEMS = [
   },
   {
     id: "apps",
-    to: "/apps",
-    label: "Apps",
+    // Phase 2: the rail is the primary app-switching surface; the legacy
+    // tile page becomes the "Manage apps" settings view at `/manage-apps`.
+    // The id stays `apps` so existing `navigation.view === "apps"` callers
+    // (agent navigate prompts, etc.) keep working.
+    to: "/manage-apps",
+    label: "Manage apps",
     icon: IconApps,
     section: "primary",
   },

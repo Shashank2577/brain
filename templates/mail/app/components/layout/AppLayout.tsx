@@ -53,6 +53,9 @@ import {
   FeedbackButton,
   NotificationsBell,
   agentNativePath,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
 } from "@agent-native/core/client";
 import { InvitationBanner, OrgSwitcher } from "@agent-native/core/client/org";
 import { ExtensionsSidebarSection } from "@agent-native/core/client/extensions";
@@ -118,6 +121,23 @@ const collapsibleViews = [
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const isMobile = useIsMobile();
+  // Phase 2: hide the per-template AgentSidebar when this app is loaded
+  // inside the dispatch super-app shell — the shell renders one sidebar for
+  // the whole workspace. Detection is via `isInsideDispatchShell()` which
+  // checks for the shell sentinel param the iframe src carries.
+  const isEmbedded = isInsideDispatchShell();
+
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      markEmbeddedInsideDispatchShell();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isEmbedded) return;
+    notifyShellOfNavigation(location.pathname + location.search);
+  }, [isEmbedded, location.pathname, location.search]);
+
   if (BARE_ROUTES.has(location.pathname)) {
     return <>{children}</>;
   }
@@ -127,6 +147,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   ) : (
     <AppLayoutInner>{children}</AppLayoutInner>
   );
+
+  if (isEmbedded) return content;
 
   return (
     <AgentSidebar

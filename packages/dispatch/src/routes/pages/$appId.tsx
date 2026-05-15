@@ -181,7 +181,7 @@ export default function WorkspaceAppCatchAllRoute() {
               a Dispatch tab or a workspace app in this workspace.
             </p>
             <Button asChild>
-              <Link to={appPath("/apps")}>Browse apps</Link>
+              <Link to={appPath("/manage-apps")}>Browse apps</Link>
             </Button>
           </div>
         )}

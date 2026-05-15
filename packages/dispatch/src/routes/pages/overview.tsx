@@ -206,7 +206,7 @@ function WorkspaceAppsSection({
           </h2>
         </div>
         <Button asChild variant="outline" size="sm">
-          <Link to="/apps">
+          <Link to="/manage-apps">
             View all
             <IconArrowUpRight size={15} className="ml-1.5" />
           </Link>

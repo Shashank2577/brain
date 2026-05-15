@@ -54,6 +54,11 @@ export {
   enterStyleEditing,
   enterTextEditing,
   exitSelectionMode,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
+  DISPATCH_SHELL_SENTINEL_PARAM,
+  DISPATCH_SHELL_SENTINEL_VALUE,
   type UserInfo,
 } from "./frame.js";
 export {

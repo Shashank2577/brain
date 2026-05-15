@@ -252,3 +252,100 @@ export function enterTextEditing(selector: string): void {
 export function exitSelectionMode(): void {
   sendToFrame("agentNative.exitSelectionMode");
 }
+
+// ---------------------------------------------------------------------------
+// Dispatch Super-App Shell Bridge
+// ---------------------------------------------------------------------------
+//
+// When a mini-app is loaded inside the dispatch shell iframe, it needs two
+// things:
+//
+//   1. A way to tell the parent shell "my internal URL just changed to X" so
+//      the parent can reflect the deep link in the browser URL bar.
+//   2. A way to detect that it's running inside the dispatch shell so its own
+//      layout can hide the per-template AgentSidebar (the shell renders one
+//      sidebar for the whole workspace).
+//
+// We keep this distinct from the existing `isInFrame()` check, which only
+// returns true after the parent has explicitly posted an
+// `agentNative.frameOrigin` handshake (used by Builder.io and the dev frame).
+// The dispatch shell loads mini-apps in a same-origin iframe without that
+// handshake, so we detect via `window.parent !== window` plus an explicit URL
+// sentinel set by the shell when it constructs the iframe src.
+
+/**
+ * URL query parameter the shell adds to every iframe src so child apps know
+ * for certain they're running inside the dispatch shell. We avoid relying on
+ * `window.parent !== window` alone because devtools or third-party embeds can
+ * iframe a mini-app without being the dispatch shell.
+ */
+export const DISPATCH_SHELL_SENTINEL_PARAM = "__shell";
+export const DISPATCH_SHELL_SENTINEL_VALUE = "dispatch";
+
+/**
+ * Returns true when this app is running inside the dispatch super-app shell
+ * iframe. Detection is by URL sentinel (set by ShellContentHost when it
+ * constructs the iframe src) — most reliable signal we have for a same-origin
+ * iframe without a postMessage handshake.
+ *
+ * Falls back to `false` on the server. Templates use this in their root layout
+ * to hide their own AgentSidebar when the shell is rendering its own.
+ */
+export function isInsideDispatchShell(): boolean {
+  if (typeof window === "undefined") return false;
+  // Cheapest first: if we're top-level, we're not inside any shell.
+  try {
+    if (window.parent === window) return false;
+  } catch {
+    // Cross-origin parent access throws in some sandboxed contexts. Same-origin
+    // (dispatch shell) never throws. If we can't read window.parent we can't
+    // be inside dispatch, so bail out.
+    return false;
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get(DISPATCH_SHELL_SENTINEL_PARAM) === DISPATCH_SHELL_SENTINEL_VALUE) {
+    return true;
+  }
+  // Secondary signal: the shell may have already rewritten the URL via
+  // history.replaceState to remove the sentinel from the user-visible path.
+  // In that case we fall back to a body-level data attribute the shell sets.
+  if (typeof document !== "undefined") {
+    return document.documentElement.hasAttribute("data-dispatch-shell");
+  }
+  return false;
+}
+
+/**
+ * Mark the current document as embedded inside the dispatch shell. Called by
+ * the child mini-app's root layout once it's confirmed via
+ * `isInsideDispatchShell()` so subsequent reads (after a `history.replaceState`
+ * that strips the URL sentinel) still return true.
+ */
+export function markEmbeddedInsideDispatchShell(): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-dispatch-shell", "true");
+}
+
+/**
+ * Notify the parent dispatch shell that the child mini-app navigated to a new
+ * internal path. The shell reflects this in the browser URL so deep-links and
+ * back-button navigation work even when the iframe owns its own router.
+ *
+ * No-op when not embedded in the shell. Safe to call from any client-side
+ * router-change handler — the shell only listens when it sees a known appId
+ * mounted in the iframe.
+ */
+export function notifyShellOfNavigation(path: string): void {
+  if (typeof window === "undefined") return;
+  if (!isInsideDispatchShell()) return;
+  try {
+    window.parent.postMessage(
+      { kind: "url-change", path },
+      window.location.origin,
+    );
+  } catch {
+    // postMessage to a cross-origin parent throws; we shouldn't be here in
+    // that case (isInsideDispatchShell requires same-origin), but stay quiet
+    // anyway.
+  }
+}

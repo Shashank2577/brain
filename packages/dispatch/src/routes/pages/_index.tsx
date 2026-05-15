@@ -21,13 +21,16 @@ export function meta() {
  * part of the server response and the navigation completes before the app
  * hydrates; `clientLoader` covers SPA-style navigations to `/`.
  *
- * We preserve `?` and `#` so deep-links like `?thread=<id>` from a Slack
- * "Open thread" button survive the bounce — `useThreadDeepLink` in
- * `root.tsx` reads them after the redirect lands on `/overview`.
+ * Phase 2: the dispatch shell at `/shell` (rail + iframe + persistent agent
+ * sidebar) is the primary surface. We preserve `?` and `#` so deep-links like
+ * `?thread=<id>` from a Slack "Open thread" button survive the bounce — they
+ * land on the shell route which forwards `?thread=<id>` through to the
+ * embedded mini-app. The legacy `/overview`, `/manage-apps`, etc. surfaces
+ * stay accessible by direct URL.
  */
 function buildTarget(request: Request): string {
   const url = new URL(request.url);
-  return appPath(`/overview${url.search}${url.hash}`);
+  return appPath(`/shell${url.search}${url.hash}`);
 }
 
 export function loader({ request }: LoaderFunctionArgs) {

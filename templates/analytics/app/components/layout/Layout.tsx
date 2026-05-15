@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useLocation } from "react-router";
 import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
@@ -8,6 +8,9 @@ import {
   AgentSidebar,
   GuidedQuestionFlow,
   useGuidedQuestionFlow,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
 } from "@agent-native/core/client";
 import { InvitationBanner } from "@agent-native/core/client/org";
 import { useNavigationState } from "@/hooks/use-navigation-state";
@@ -21,6 +24,17 @@ const BARE_ROUTES = new Set(["/chart"]);
 export function Layout({ children }: LayoutProps) {
   useNavigationState();
   const location = useLocation();
+  // Phase 2: hide own AgentSidebar when embedded in the dispatch shell.
+  const isEmbedded = isInsideDispatchShell();
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      markEmbeddedInsideDispatchShell();
+    }
+  }, []);
+  useEffect(() => {
+    if (!isEmbedded) return;
+    notifyShellOfNavigation(location.pathname + location.search);
+  }, [isEmbedded, location.pathname, location.search]);
 
   // Analytics has two distinct "primary resources" — dashboards
   // (`/adhoc/:id`) and ad-hoc analyses (`/analyses/:id`). Each binds the
@@ -77,48 +91,56 @@ export function Layout({ children }: LayoutProps) {
         <div className="hidden shrink-0 md:block">
           <Sidebar />
         </div>
-        <AgentSidebar
-          position="right"
-          defaultOpen
-          emptyStateText="Ask me anything about your data"
-          suggestions={[
-            "Build a dashboard for our pipeline",
-            "Why did signups drop last week?",
-            "Compare this week's revenue to last",
-          ]}
-          scope={analyticsScope}
-        >
-          <div className="flex h-full flex-1 flex-col overflow-hidden">
-            <MobileNav />
-            {!isExtensionsRoute && <Header />}
-            <InvitationBanner />
-            <main
-              className={
-                isExtensionsRoute
-                  ? "flex-1 overflow-y-auto"
-                  : "flex-1 overflow-y-auto p-4 md:p-6 lg:p-8"
-              }
+        {(() => {
+          const inner = (
+            <div className="flex h-full flex-1 flex-col overflow-hidden">
+              <MobileNav />
+              {!isExtensionsRoute && <Header />}
+              <InvitationBanner />
+              <main
+                className={
+                  isExtensionsRoute
+                    ? "flex-1 overflow-y-auto"
+                    : "flex-1 overflow-y-auto p-4 md:p-6 lg:p-8"
+                }
+              >
+                {children}
+              </main>
+              {guidedQuestions && (
+                <div className="fixed inset-0 z-[260] bg-background">
+                  <GuidedQuestionFlow
+                    questions={guidedQuestions}
+                    onSubmit={handleGuidedSubmit}
+                    onSkip={handleGuidedSkip}
+                    title={guidedTitle ?? "Clarify the dashboard"}
+                    description={
+                      guidedDescription ??
+                      "A few choices help the agent pick the right source, metrics, cuts, and layout before it writes SQL."
+                    }
+                    skipLabel={guidedSkipLabel}
+                    submitLabel={guidedSubmitLabel}
+                  />
+                </div>
+              )}
+            </div>
+          );
+          if (isEmbedded) return inner;
+          return (
+            <AgentSidebar
+              position="right"
+              defaultOpen
+              emptyStateText="Ask me anything about your data"
+              suggestions={[
+                "Build a dashboard for our pipeline",
+                "Why did signups drop last week?",
+                "Compare this week's revenue to last",
+              ]}
+              scope={analyticsScope}
             >
-              {children}
-            </main>
-            {guidedQuestions && (
-              <div className="fixed inset-0 z-[260] bg-background">
-                <GuidedQuestionFlow
-                  questions={guidedQuestions}
-                  onSubmit={handleGuidedSubmit}
-                  onSkip={handleGuidedSkip}
-                  title={guidedTitle ?? "Clarify the dashboard"}
-                  description={
-                    guidedDescription ??
-                    "A few choices help the agent pick the right source, metrics, cuts, and layout before it writes SQL."
-                  }
-                  skipLabel={guidedSkipLabel}
-                  submitLabel={guidedSubmitLabel}
-                />
-              </div>
-            )}
-          </div>
-        </AgentSidebar>
+              {inner}
+            </AgentSidebar>
+          );
+        })()}
       </div>
     </HeaderActionsProvider>
   );

@@ -2,7 +2,12 @@ import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { DocumentSidebar } from "@/components/sidebar/DocumentSidebar";
 import { useCreatePage } from "@/hooks/use-create-page";
-import { AgentSidebar } from "@agent-native/core/client";
+import {
+  AgentSidebar,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
+} from "@agent-native/core/client";
 import { InvitationBanner } from "@agent-native/core/client/org";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -37,6 +42,17 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
+  // Phase 2: hide own AgentSidebar when embedded in the dispatch shell.
+  const isEmbedded = isInsideDispatchShell();
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      markEmbeddedInsideDispatchShell();
+    }
+  }, []);
+  useEffect(() => {
+    if (!isEmbedded) return;
+    notifyShellOfNavigation(location.pathname + location.search);
+  }, [isEmbedded, location.pathname, location.search]);
   const activeDocumentId =
     location.pathname.match(/^\/page\/([^/]+)/)?.[1] ?? null;
   // Bind chat to the currently-open document. Everywhere else (list view,
@@ -117,23 +133,31 @@ export function Layout({ children }: LayoutProps) {
             onResize={handleSidebarResize}
           />
         )}
-        <AgentSidebar
-          position="right"
-          defaultOpen={!isMobile}
-          emptyStateText="Ask me anything about your documents"
-          suggestions={[
-            "Draft a PRD for a new feature",
-            "Summarize this page in 5 bullets",
-            "Pull this page from Notion",
-          ]}
-          scope={documentScope}
-        >
-          <main className="relative flex min-w-0 min-h-0 flex-1 flex-col">
-            {showHeader ? <Header /> : null}
-            <InvitationBanner className="pl-16 sm:pl-4 [&>div]:flex-wrap [&>div]:items-start [&>div>span]:min-w-0 [&>div>span]:flex-1" />
-            {children}
-          </main>
-        </AgentSidebar>
+        {(() => {
+          const inner = (
+            <main className="relative flex min-w-0 min-h-0 flex-1 flex-col">
+              {showHeader ? <Header /> : null}
+              <InvitationBanner className="pl-16 sm:pl-4 [&>div]:flex-wrap [&>div]:items-start [&>div>span]:min-w-0 [&>div>span]:flex-1" />
+              {children}
+            </main>
+          );
+          if (isEmbedded) return inner;
+          return (
+            <AgentSidebar
+              position="right"
+              defaultOpen={!isMobile}
+              emptyStateText="Ask me anything about your documents"
+              suggestions={[
+                "Draft a PRD for a new feature",
+                "Summarize this page in 5 bullets",
+                "Pull this page from Notion",
+              ]}
+              scope={documentScope}
+            >
+              {inner}
+            </AgentSidebar>
+          );
+        })()}
       </div>
     </HeaderActionsProvider>
   );

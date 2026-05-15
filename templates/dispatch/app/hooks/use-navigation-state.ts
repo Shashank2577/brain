@@ -124,7 +124,11 @@ function resolveView(
 ): string {
   const extensionView = resolveExtensionView(pathname, extensions);
   if (extensionView) return extensionView;
+  // Phase 2: legacy tile page lives under `/manage-apps`; the rail is the
+  // primary surface. `apps` view still resolves the same canonical id.
+  if (pathname.startsWith("/manage-apps")) return "apps";
   if (pathname.startsWith("/apps")) return "apps";
+  if (pathname.startsWith("/shell")) return "shell";
   if (pathname.startsWith("/metrics")) return "metrics";
   if (pathname.startsWith("/new-app")) return "new-app";
   if (pathname.startsWith("/vault")) return "vault";
@@ -149,7 +153,9 @@ function resolvePath(
     case "overview":
       return "/overview";
     case "apps":
-      return "/apps";
+      return "/manage-apps";
+    case "shell":
+      return "/shell";
     case "metrics":
     case "usage":
       return "/metrics";

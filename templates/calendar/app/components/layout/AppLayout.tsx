@@ -12,6 +12,9 @@ import {
   AgentSidebar,
   AgentToggleButton,
   NotificationsBell,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
   useAppearanceSync,
 } from "@agent-native/core/client";
 import { InvitationBanner } from "@agent-native/core/client/org";
@@ -125,6 +128,25 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const isMobile = useIsMobile();
   const location = useLocation();
+  // Phase 2: when running inside the dispatch super-app shell iframe, the
+  // shell renders the one persistent AgentSidebar for the whole workspace.
+  // We hide this template's own sidebar to avoid two competing chat panes.
+  const isEmbedded = isInsideDispatchShell();
+
+  // Pin the embedded marker before the first paint so subsequent reads after
+  // history.replaceState (which the React Router-internal navigation will do)
+  // still detect embedded mode. Notify the parent of internal navigations so
+  // the shell URL reflects the iframe's deep link.
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      markEmbeddedInsideDispatchShell();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isEmbedded) return;
+    notifyShellOfNavigation(location.pathname + location.search);
+  }, [isEmbedded, location.pathname, location.search]);
   const googleStatus = useGoogleAuthStatus();
   const hasAccounts = (googleStatus.data?.accounts?.length ?? 0) > 0;
   const isSettingsPage = location.pathname === "/settings";
@@ -237,7 +259,8 @@ export function AppLayout({ children }: AppLayoutProps) {
       />
       <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <AgentSidebar
+        <ConditionalAgentSidebar
+          embedded={isEmbedded}
           position="right"
           defaultOpen
           emptyStateText="Ask me anything about your calendar"
@@ -292,8 +315,25 @@ export function AppLayout({ children }: AppLayoutProps) {
               )}
             </HeaderControlsContext.Provider>
           </div>
-        </AgentSidebar>
+        </ConditionalAgentSidebar>
       </div>
     </CalendarContext.Provider>
   );
+}
+
+/**
+ * Wraps the AgentSidebar so when the calendar is embedded inside the
+ * dispatch shell iframe we render children directly (no nested sidebar).
+ * Local/standalone mode keeps the existing AgentSidebar behaviour.
+ */
+function ConditionalAgentSidebar({
+  embedded,
+  children,
+  ...props
+}: { embedded: boolean; children: ReactNode } & Omit<
+  Parameters<typeof AgentSidebar>[0],
+  "children"
+>) {
+  if (embedded) return <>{children}</>;
+  return <AgentSidebar {...props}>{children}</AgentSidebar>;
 }

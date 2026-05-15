@@ -16,6 +16,8 @@ const DISPATCH_PAGE_PATHS = new Set([
   "/login",
   "/signup",
   "/apps",
+  "/manage-apps",
+  "/shell",
   "/new-app",
   "/vault",
   "/integrations",

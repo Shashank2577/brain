@@ -1,9 +1,14 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useLocation } from "react-router";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { HeaderActionsProvider } from "./HeaderActions";
-import { AgentSidebar } from "@agent-native/core/client";
+import {
+  AgentSidebar,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
+} from "@agent-native/core/client";
 import { InvitationBanner } from "@agent-native/core/client/org";
 
 const BARE_ROUTES = new Set(["/form-preview"]);
@@ -19,6 +24,17 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
+  // Phase 2: hide own AgentSidebar when embedded in the dispatch shell.
+  const isEmbedded = isInsideDispatchShell();
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      markEmbeddedInsideDispatchShell();
+    }
+  }, []);
+  useEffect(() => {
+    if (!isEmbedded) return;
+    notifyShellOfNavigation(location.pathname + location.search);
+  }, [isEmbedded, location.pathname, location.search]);
 
   // Bind chat to the currently-open form. The `/forms/:id` URL covers
   // both the builder and the responses sub-page (`/forms/:id/responses`);
@@ -41,27 +57,35 @@ export function Layout({ children }: LayoutProps) {
     location.pathname.startsWith(prefix),
   );
 
+  const inner = (
+    <div className="flex h-full flex-1 flex-col overflow-hidden">
+      {showHeader ? <Header /> : null}
+      <InvitationBanner />
+      <main className="flex-1 overflow-auto">{children}</main>
+    </div>
+  );
+
   return (
     <HeaderActionsProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        <AgentSidebar
-          position="right"
-          defaultOpen
-          emptyStateText="Ask me anything about your forms"
-          suggestions={[
-            "Build a customer feedback survey",
-            "Summarize this week's responses",
-            "Export responses to CSV",
-          ]}
-          scope={formScope}
-        >
-          <div className="flex h-full flex-1 flex-col overflow-hidden">
-            {showHeader ? <Header /> : null}
-            <InvitationBanner />
-            <main className="flex-1 overflow-auto">{children}</main>
-          </div>
-        </AgentSidebar>
+        {isEmbedded ? (
+          inner
+        ) : (
+          <AgentSidebar
+            position="right"
+            defaultOpen
+            emptyStateText="Ask me anything about your forms"
+            suggestions={[
+              "Build a customer feedback survey",
+              "Summarize this week's responses",
+              "Export responses to CSV",
+            ]}
+            scope={formScope}
+          >
+            {inner}
+          </AgentSidebar>
+        )}
       </div>
     </HeaderActionsProvider>
   );

@@ -15,3 +15,10 @@ export type {
 } from "./layout/Layout.js";
 export { CreateAppPopover, CreateAppFlow } from "./create-app-popover.js";
 export { AppKeysPopover } from "./app-keys-popover.js";
+export { SuperAppRail } from "./SuperAppRail.js";
+export type { SuperAppRailProps, RegistryApp } from "./SuperAppRail.js";
+export {
+  ShellContentHost,
+  buildIframeSrc,
+} from "./ShellContentHost.js";
+export type { ShellContentHostProps } from "./ShellContentHost.js";

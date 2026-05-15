@@ -47,9 +47,9 @@ export default function WorkspaceAppRoute() {
     >
       <div className="max-w-2xl rounded-lg border bg-card p-5">
         <Button asChild size="sm" variant="ghost" className="-ml-2 mb-4">
-          <Link to="/apps">
+          <Link to="/manage-apps">
             <IconArrowLeft size={15} className="mr-1.5" />
-            Apps
+            Manage apps
           </Link>
         </Button>
 

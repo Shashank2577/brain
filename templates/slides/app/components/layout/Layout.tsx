@@ -3,7 +3,12 @@ import { useLocation } from "react-router";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { HeaderActionsProvider } from "./HeaderActions";
-import { AgentSidebar } from "@agent-native/core/client";
+import {
+  AgentSidebar,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
+} from "@agent-native/core/client";
 import { InvitationBanner } from "@agent-native/core/client/org";
 import { IconMenu2 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
@@ -32,6 +37,17 @@ export function Layout({ children }: LayoutProps) {
   const { collapsed: sidebarCollapsed, setCollapsed: setSidebarCollapsed } =
     useSidebarCollapsed();
   const { getDeck } = useDecks();
+  // Phase 2: dispatch super-app shell hides the per-template AgentSidebar.
+  const isEmbedded = isInsideDispatchShell();
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      markEmbeddedInsideDispatchShell();
+    }
+  }, []);
+  useEffect(() => {
+    if (!isEmbedded) return;
+    notifyShellOfNavigation(location.pathname + location.search);
+  }, [isEmbedded, location.pathname, location.search]);
 
   // Scope new chats to the deck the user is currently editing. The route
   // is `/deck/:id`; everywhere else (list, settings, presentation) leaves
@@ -60,20 +76,9 @@ export function Layout({ children }: LayoutProps) {
 
   const ownToolbar = pageHasOwnToolbar(location.pathname);
 
-  return (
-    <HeaderActionsProvider>
-      <AgentSidebar
-        position="right"
-        defaultOpen
-        emptyStateText="Ask me anything about your presentations"
-        suggestions={[
-          "Build a 10-slide pitch from this doc",
-          "Apply our brand to this deck",
-          "Generate a hero image for this slide",
-        ]}
-        scope={deckScope}
-      >
-        <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+  const inner = (
+    <>
+      <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
           {sidebarOpen && (
             <div
               className="fixed inset-0 z-40 bg-black/50 md:hidden"
@@ -120,7 +125,28 @@ export function Layout({ children }: LayoutProps) {
           </div>
           <AgentWorkIndicator />
         </div>
-      </AgentSidebar>
+    </>
+  );
+
+  return (
+    <HeaderActionsProvider>
+      {isEmbedded ? (
+        inner
+      ) : (
+        <AgentSidebar
+          position="right"
+          defaultOpen
+          emptyStateText="Ask me anything about your presentations"
+          suggestions={[
+            "Build a 10-slide pitch from this doc",
+            "Apply our brand to this deck",
+            "Generate a hero image for this slide",
+          ]}
+          scope={deckScope}
+        >
+          {inner}
+        </AgentSidebar>
+      )}
     </HeaderActionsProvider>
   );
 }

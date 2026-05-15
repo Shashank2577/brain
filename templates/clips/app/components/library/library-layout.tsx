@@ -21,6 +21,9 @@ import {
   AgentToggleButton,
   FeedbackButton,
   appPath,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
 } from "@agent-native/core/client";
 import { OrgSwitcher, RequireActiveOrg } from "@agent-native/core/client/org";
 import { cn } from "@/lib/utils";
@@ -79,6 +82,17 @@ function ClipsAgentToggleButton() {
 
 export function LibraryLayout({ children }: LibraryLayoutProps) {
   const location = useLocation();
+  // Phase 2: hide own AgentSidebar when embedded in the dispatch shell.
+  const isEmbedded = isInsideDispatchShell();
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      markEmbeddedInsideDispatchShell();
+    }
+  }, []);
+  useEffect(() => {
+    if (!isEmbedded) return;
+    notifyShellOfNavigation(location.pathname + location.search);
+  }, [isEmbedded, location.pathname, location.search]);
   // Bind chat to the currently-open recording (`/r/:id`). Library, spaces,
   // meetings, dictate, and settings stay unscoped — those are list-y views
   // where deck-style "this recording" framing doesn't apply.
@@ -197,8 +211,12 @@ export function LibraryLayout({ children }: LibraryLayoutProps) {
     },
   ];
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-background">
+  // Phase 2: when embedded, we render the children without an outer AgentSidebar.
+  // Use a small wrapper component to keep the JSX symmetrical.
+  const AgentWrap = ({ children: agentWrapChildren }: { children: React.ReactNode }) =>
+    isEmbedded ? (
+      <>{agentWrapChildren}</>
+    ) : (
       <AgentSidebar
         position="right"
         defaultOpen={!isMobile}
@@ -210,6 +228,13 @@ export function LibraryLayout({ children }: LibraryLayoutProps) {
         ]}
         scope={recordingScope}
       >
+        {agentWrapChildren}
+      </AgentSidebar>
+    );
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      <AgentWrap>
         <RequireActiveOrg
           title="Create your organization"
           description="Clips organizes recordings by team. Create an organization to continue — you can invite teammates afterward."
@@ -551,7 +576,7 @@ export function LibraryLayout({ children }: LibraryLayoutProps) {
             </div>
           </div>
         </RequireActiveOrg>
-      </AgentSidebar>
+      </AgentWrap>
 
       {/* New folder dialog (library root) */}
       <AlertDialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>

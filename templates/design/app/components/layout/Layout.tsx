@@ -4,7 +4,12 @@ import { IconMenu2 } from "@tabler/icons-react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { HeaderActionsProvider } from "./HeaderActions";
-import { AgentSidebar } from "@agent-native/core/client";
+import {
+  AgentSidebar,
+  isInsideDispatchShell,
+  markEmbeddedInsideDispatchShell,
+  notifyShellOfNavigation,
+} from "@agent-native/core/client";
 import { useNavigationState } from "@/hooks/use-navigation-state";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +32,17 @@ export function Layout({ children }: LayoutProps) {
   useNavigationState();
   const location = useLocation();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // Phase 2: hide own AgentSidebar when embedded in the dispatch shell.
+  const isEmbedded = isInsideDispatchShell();
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      markEmbeddedInsideDispatchShell();
+    }
+  }, []);
+  useEffect(() => {
+    if (!isEmbedded) return;
+    notifyShellOfNavigation(location.pathname + location.search);
+  }, [isEmbedded, location.pathname, location.search]);
 
   // Bind chat to the currently-open design. Same pattern as slides — the
   // route is `/design/:id` for the editor and `/present/:id` for preview
@@ -53,19 +69,9 @@ export function Layout({ children }: LayoutProps) {
     location.pathname.startsWith(p),
   );
 
-  return (
-    <HeaderActionsProvider>
-      <AgentSidebar
-        position="right"
-        emptyStateText="Describe a design to create"
-        suggestions={[
-          "Design a landing page for my startup",
-          "Make this match our brand",
-          "Add a mobile version of this",
-        ]}
-        scope={designScope}
-      >
-        <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+  const inner = (
+    <>
+      <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
           {mobileSidebarOpen && (
             <div
               className="fixed inset-0 z-40 bg-black/50 md:hidden"
@@ -98,7 +104,27 @@ export function Layout({ children }: LayoutProps) {
             <main className="flex-1 overflow-y-auto">{children}</main>
           </div>
         </div>
-      </AgentSidebar>
+    </>
+  );
+
+  return (
+    <HeaderActionsProvider>
+      {isEmbedded ? (
+        inner
+      ) : (
+        <AgentSidebar
+          position="right"
+          emptyStateText="Describe a design to create"
+          suggestions={[
+            "Design a landing page for my startup",
+            "Make this match our brand",
+            "Add a mobile version of this",
+          ]}
+          scope={designScope}
+        >
+          {inner}
+        </AgentSidebar>
+      )}
     </HeaderActionsProvider>
   );
 }
