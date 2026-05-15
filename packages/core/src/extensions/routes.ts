@@ -8,6 +8,7 @@ import {
 } from "h3";
 import { readBody } from "../server/h3-helpers.js";
 import { getSession } from "../server/auth.js";
+import { captureCliOutput } from "../server/cli-capture.js";
 import { recordChange } from "../server/poll.js";
 import {
   runWithRequestContext,
@@ -650,51 +651,6 @@ async function handleProxy(
   }
 }
 
-/**
- * Capture console output from a CLI script that uses console.log for results.
- * Same technique as wrapCliScript in agent-chat-plugin.ts.
- */
-let captureCliOutputQueue: Promise<void> = Promise.resolve();
-
-async function captureCliOutput(
-  fn: (args: string[]) => Promise<void>,
-  args: string[],
-): Promise<string> {
-  const previousCapture = captureCliOutputQueue;
-  let releaseCapture!: () => void;
-  captureCliOutputQueue = new Promise<void>((resolve) => {
-    releaseCapture = resolve;
-  });
-  await previousCapture;
-
-  const logs: string[] = [];
-  const origLog = console.log;
-  const origError = console.error;
-  const origStdoutWrite = process.stdout.write;
-  console.log = (...a: unknown[]) => {
-    logs.push(a.map(String).join(" "));
-  };
-  console.error = (...a: unknown[]) => {
-    logs.push(a.map(String).join(" "));
-  };
-  process.stdout.write = ((chunk: any) => {
-    if (typeof chunk === "string") logs.push(chunk);
-    else if (Buffer.isBuffer(chunk)) logs.push(chunk.toString());
-    return true;
-  }) as any;
-  try {
-    await fn(args);
-  } catch (err: any) {
-    logs.push(`Error: ${err?.message ?? String(err)}`);
-  } finally {
-    console.log = origLog;
-    console.error = origError;
-    process.stdout.write = origStdoutWrite;
-    releaseCapture();
-  }
-  return logs.join("\n") || "(no output)";
-}
-
 async function handleSqlQuery(event: H3Event): Promise<unknown> {
   const body = await readBody(event);
   const sql = body.sql;
@@ -726,7 +682,7 @@ async function handleSqlQuery(event: H3Event): Promise<unknown> {
       }
       args.push("--args", JSON.stringify(body.args));
     }
-    const output = await captureCliOutput(mod.default, args);
+    const output = await captureCliOutput(() => mod.default(args));
     try {
       return JSON.parse(output);
     } catch {
@@ -813,7 +769,7 @@ async function handleSqlExec(event: H3Event): Promise<unknown> {
       }
       args.push("--args", JSON.stringify(body.args));
     }
-    const output = await captureCliOutput(mod.default, args);
+    const output = await captureCliOutput(() => mod.default(args));
     try {
       return JSON.parse(output);
     } catch {

@@ -421,6 +421,7 @@ export async function hideExtension(id: string): Promise<boolean> {
 
 export async function unhideExtension(id: string): Promise<boolean> {
   await ensureExtensionsTables();
+  await assertAccess("extension", id, "viewer");
   const userEmail = getRequestUserEmail();
   if (!userEmail) throw new Error("no authenticated user");
 
