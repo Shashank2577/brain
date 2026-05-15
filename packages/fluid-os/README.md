@@ -118,19 +118,23 @@ pnpm install
 pnpm demo
 ```
 
-You'll see:
+You'll see seven apps install (`notes`, `tasks`, `mail`, `calendar`, `content`, `slides`, `dispatch`), the full capability registry print as the agent would read it, then a cross-app flow:
 
-1. The OS boot, install `notes` and `tasks`, and print the registry as the agent would see it.
-2. A demo flow: list apps → list capabilities → `tasks.create` (which cascades into `notes.create`) → `notes.list` → `notes.search`.
+1. **`dispatch.broadcast`** fans out to **`mail.send-email`** for three recipients.
+2. A second user (Bob) lists his inbox via **`mail.list-inbox`** and sees only the email addressed to him — sessions are user-scoped end to end.
+3. **`content.create-document`** stores a doc; **`slides.create-deck-from-document`** then reads it via **`content.get-document`** and turns paragraphs into slides.
+4. **`dispatch.send-and-schedule`** resolves a contact via **`mail.find-contact`**, checks the slot via **`calendar.check-availability`**, sends the email, and books the follow-up via **`calendar.create-event`** — all in one call.
+5. Retrying the same slot is rejected by **`calendar.check-availability`** — the OS doesn't double-book.
 
-## Plugging in an existing template
+## Adapting a real template
 
-Each template grows one new file — its manifest — and a tiny boot snippet that calls `os.install(manifest)` against the local OS instance. No template internals change. Once a template has a manifest:
+The five "real-template" manifests under `examples/apps/{mail,calendar,content,slides,dispatch}` deliberately match the **shape** of each template's actions — same capability names, same input/output. To plug in the live template:
 
-- It shows up in the launcher.
-- Its capabilities become callable by other apps and by the agent.
-- It gets free OS sign-on.
-- Other templates can stop reimplementing what it already does — they look it up in `registry.listCapabilities()`.
+1. Drop the manifest file into the template (or a colocated package).
+2. Replace each capability `handler` with a call to the template's existing action (`defineAction`). The handler signature is identical; you only swap the body.
+3. Boot the OS with `os.install(<template>App)` from the template's startup plugin.
+
+Once you do that, no other template needs to reimplement `find-contact`, `send-email`, `check-availability`, `get-document`, etc. They look it up in `registry.listCapabilities()` and call it via `ctx.call(...)`.
 
 ## What's intentionally not in this first cut
 
