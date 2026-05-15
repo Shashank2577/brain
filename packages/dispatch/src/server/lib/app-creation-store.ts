@@ -863,6 +863,25 @@ export async function listAvailableWorkspaceTemplates(): Promise<
 
 const SCAFFOLD_TIMEOUT_MS = 90_000;
 
+/**
+ * Phase 6 — starter template ids the picker in CreateAppPopover exposes.
+ * These differ from `ADDABLE_TEMPLATES` (clones of first-party templates).
+ * Starter ids are passed to `agent-native add-app --template <id>`; the
+ * core CLI recognises them and copies the matching tree from
+ * `packages/core/src/cli/starter-templates/<id>/`.
+ */
+const STARTER_TEMPLATE_IDS = [
+  "blank",
+  "crud-list",
+  "dashboard",
+  "agent-tool",
+] as const;
+type StarterTemplateId = (typeof STARTER_TEMPLATE_IDS)[number];
+
+function isStarterTemplateId(value: string): value is StarterTemplateId {
+  return (STARTER_TEMPLATE_IDS as readonly string[]).includes(value);
+}
+
 export async function scaffoldWorkspaceAppFromTemplate(input: {
   template: string;
   appId?: string | null;
@@ -875,7 +894,8 @@ export async function scaffoldWorkspaceAppFromTemplate(input: {
   }
   const template = input.template.trim();
   if (!template) throw new Error("template is required");
-  if (!ADDABLE_TEMPLATES.some((tpl) => tpl.name === template)) {
+  const isStarter = isStarterTemplateId(template);
+  if (!isStarter && !ADDABLE_TEMPLATES.some((tpl) => tpl.name === template)) {
     throw new Error(`Unknown template "${template}".`);
   }
 
@@ -901,10 +921,64 @@ export async function scaffoldWorkspaceAppFromTemplate(input: {
     targetType: "workspace-app",
     targetId: appId,
     summary: `Scaffolded apps/${appId} from ${template}`,
-    metadata: { template },
+    metadata: { template, starter: isStarter },
   });
 
   return { appId, template, output };
+}
+
+/**
+ * Phase 6 — starter-template catalog surfaced to the picker UI. Inlined
+ * so the dispatch package has no `workspace:*` runtime dependency on
+ * `@agent-native/core/cli/starter-scaffold`. Keep in sync with the
+ * STARTER_TEMPLATES export in
+ * `packages/core/src/cli/starter-scaffold.ts`.
+ */
+export interface StarterTemplateOption {
+  id: StarterTemplateId;
+  label: string;
+  hint: string;
+  icon: string;
+  description: string;
+}
+
+const STARTER_TEMPLATE_OPTIONS: StarterTemplateOption[] = [
+  {
+    id: "blank",
+    label: "Blank",
+    hint: "Minimal scaffold — one route, one table, one action.",
+    icon: "Sparkles",
+    description:
+      "Start from a clean slate. One generic items table and a single list capability. Add the rest as you go.",
+  },
+  {
+    id: "crud-list",
+    label: "CRUD list",
+    hint: "List view + detail page, 5 baseline CRUD actions.",
+    icon: "ListDetails",
+    description:
+      "The most common pattern: a list of things the user creates, opens, edits, and deletes. Ships list/get/create/update/delete actions and the matching UI.",
+  },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    hint: "Grid of metric cards backed by a read-only query.",
+    icon: "ChartBar",
+    description:
+      "Read-only metric grid. One list-metrics action surfaces per-card data. Add new actions to wire real data sources via A2A.",
+  },
+  {
+    id: "agent-tool",
+    label: "Agent tool",
+    hint: "Backend-heavy agentic service with 2 capabilities.",
+    icon: "Robot",
+    description:
+      "ADR-001 'agentic service' exception. Two capabilities (run-task, list-tasks), minimal UI. Use when other apps will call yours via ctx.call(...).",
+  },
+];
+
+export async function listStarterTemplates(): Promise<StarterTemplateOption[]> {
+  return STARTER_TEMPLATE_OPTIONS;
 }
 
 function runScaffoldCli(input: {

@@ -28,6 +28,7 @@ import listDispatchOverview from "./list-dispatch-overview.js";
 import listDispatchUsageMetrics from "./list-dispatch-usage-metrics.js";
 import listIntegrationsCatalog from "./list-integrations-catalog.js";
 import listLinkedIdentities from "./list-linked-identities.js";
+import listStarterTemplates from "./list-starter-templates.js";
 import listVaultAudit from "./list-vault-audit.js";
 import listVaultGrants from "./list-vault-grants.js";
 import listVaultRequests from "./list-vault-requests.js";
@@ -43,6 +44,7 @@ import removePendingWorkspaceApp from "./remove-pending-workspace-app.js";
 import requestVaultSecret from "./request-vault-secret.js";
 import revokeVaultGrant from "./revoke-vault-grant.js";
 import revokeWorkspaceResourceGrant from "./revoke-workspace-resource-grant.js";
+import scaffoldFromTemplate from "./scaffold-from-template.js";
 import scaffoldWorkspaceApp from "./scaffold-workspace-app.js";
 import searchAgentThreads from "./search-agent-threads.js";
 import sendPlatformMessage from "./send-platform-message.js";
@@ -94,6 +96,7 @@ export const dispatchActions: Record<string, ActionEntry> = {
   "list-dispatch-usage-metrics": listDispatchUsageMetrics,
   "list-integrations-catalog": listIntegrationsCatalog,
   "list-linked-identities": listLinkedIdentities,
+  "list-starter-templates": listStarterTemplates,
   "list-vault-audit": listVaultAudit,
   "list-vault-grants": listVaultGrants,
   "list-vault-requests": listVaultRequests,
@@ -109,6 +112,7 @@ export const dispatchActions: Record<string, ActionEntry> = {
   "request-vault-secret": requestVaultSecret,
   "revoke-vault-grant": revokeVaultGrant,
   "revoke-workspace-resource-grant": revokeWorkspaceResourceGrant,
+  "scaffold-from-template": scaffoldFromTemplate,
   "scaffold-workspace-app": scaffoldWorkspaceApp,
   "search-agent-threads": searchAgentThreads,
   "send-platform-message": sendPlatformMessage,

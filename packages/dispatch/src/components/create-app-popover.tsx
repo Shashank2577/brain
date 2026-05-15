@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import {
   PromptComposer,
   agentNativePath,
@@ -12,13 +18,19 @@ import {
   IconArrowLeft,
   IconArrowUpRight,
   IconBook,
+  IconChartBar,
   IconCheck,
   IconChevronDown,
   IconFileText,
   IconKey,
+  IconListDetails,
   IconLoader2,
   IconPlus,
+  IconRobot,
+  IconSparkles,
 } from "@tabler/icons-react";
+
+type StarterIcon = ComponentType<{ size?: number | string; className?: string }>;
 import {
   Popover,
   PopoverContent,
@@ -54,6 +66,11 @@ interface CreateAppPopoverProps {
    * Override the popover alignment. Defaults to "center" with a 10px offset.
    */
   align?: "start" | "center" | "end";
+  /**
+   * Phase 6 — invoked after a starter scaffold completes so the parent
+   * shell can refresh the rail and switch to the new app.
+   */
+  onScaffolded?: (appId: string) => void;
 }
 
 function slugify(value: string): string {
@@ -152,6 +169,220 @@ function actionUrl(basePath: string | null, action: string): string {
   return `${normalized}${path}`;
 }
 
+// Phase 6 — Starter template catalog. Inlined so the picker UI doesn't
+// have to await the `list-starter-templates` action before rendering.
+// Kept in sync with `packages/dispatch/src/server/lib/app-creation-store.ts`
+// (`STARTER_TEMPLATE_OPTIONS`) which the action returns server-side.
+interface StarterTemplateOption {
+  id: "blank" | "crud-list" | "dashboard" | "agent-tool";
+  label: string;
+  hint: string;
+  description: string;
+}
+
+const STARTER_TEMPLATES: StarterTemplateOption[] = [
+  {
+    id: "blank",
+    label: "Blank",
+    hint: "Minimal scaffold — one route, one table, one action.",
+    description:
+      "Start from a clean slate. One generic items table and a single list capability.",
+  },
+  {
+    id: "crud-list",
+    label: "CRUD list",
+    hint: "List view + detail page, 5 baseline CRUD actions.",
+    description:
+      "The most common pattern: a list of things the user creates, opens, edits, and deletes.",
+  },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    hint: "Grid of metric cards backed by a read-only query.",
+    description:
+      "Read-only metric grid. One list-metrics action surfaces per-card data.",
+  },
+  {
+    id: "agent-tool",
+    label: "Agent tool",
+    hint: "Backend-heavy agentic service with 2 capabilities.",
+    description:
+      "ADR-001 'agentic service' exception — when other apps call yours via ctx.call.",
+  },
+];
+
+function starterIcon(id: StarterTemplateOption["id"]): StarterIcon {
+  switch (id) {
+    case "blank":
+      return IconSparkles as unknown as StarterIcon;
+    case "crud-list":
+      return IconListDetails as unknown as StarterIcon;
+    case "dashboard":
+      return IconChartBar as unknown as StarterIcon;
+    case "agent-tool":
+      return IconRobot as unknown as StarterIcon;
+  }
+}
+
+/**
+ * Phase 6 — Starter-template picker. User picks one of four bundled
+ * starters, types a name, and hits Create. Submits to
+ * `scaffold-from-template` and notifies the parent shell via
+ * `onScaffolded` so it can refresh the rail.
+ */
+function StarterTemplatePicker({
+  basePath,
+  onClose,
+  onScaffolded,
+}: {
+  basePath: string | null;
+  onClose?: () => void;
+  onScaffolded?: (appId: string) => void;
+}) {
+  const [selected, setSelected] =
+    useState<StarterTemplateOption["id"]>("crud-list");
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const nameError = useMemo(() => {
+    if (!name.trim()) return null;
+    return getWorkspaceAppIdValidationError(name.trim());
+  }, [name]);
+
+  async function submit() {
+    const slug = name.trim();
+    if (!slug) {
+      setError("Name is required");
+      return;
+    }
+    const validation = getWorkspaceAppIdValidationError(slug);
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    setStatus(`Creating ${slug} from ${selected}…`);
+
+    try {
+      const result = await fetchJson(
+        actionUrl(basePath, "scaffold-from-template"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ template: selected, name: slug }),
+        },
+      );
+      setStatus("App created — switching to it…");
+      onScaffolded?.(result?.appId ?? slug);
+      onClose?.();
+    } catch (err: any) {
+      setError(err?.message || "Could not scaffold the app.");
+      setStatus(null);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-2">
+        {STARTER_TEMPLATES.map((tpl) => {
+          const Icon = starterIcon(tpl.id);
+          const active = tpl.id === selected;
+          return (
+            <button
+              key={tpl.id}
+              type="button"
+              onClick={() => setSelected(tpl.id)}
+              disabled={submitting}
+              aria-pressed={active}
+              data-starter-id={tpl.id}
+              className={`group flex cursor-pointer flex-col items-start gap-1.5 rounded-lg border px-3 py-3 text-left transition ${
+                active
+                  ? "border-primary/50 bg-primary/5"
+                  : "border-border hover:border-muted-foreground/50 hover:bg-accent/40"
+              }`}
+            >
+              <span
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-md ${
+                  active
+                    ? "bg-primary/15 text-primary"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                <Icon size={16} />
+              </span>
+              <span className="text-sm font-semibold">{tpl.label}</span>
+              <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                {tpl.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="rounded-md border border-border bg-card p-3 text-xs text-muted-foreground">
+        {STARTER_TEMPLATES.find((t) => t.id === selected)?.description}
+      </div>
+
+      <label
+        htmlFor="starter-app-name"
+        className="flex flex-col gap-1.5 px-1 text-[11px] text-muted-foreground"
+      >
+        App name (kebab-case)
+        <input
+          id="starter-app-name"
+          type="text"
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+            if (error) setError(null);
+          }}
+          placeholder="widgets"
+          autoComplete="off"
+          spellCheck={false}
+          disabled={submitting}
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        {nameError ? (
+          <span className="text-[11px] text-destructive">{nameError}</span>
+        ) : null}
+      </label>
+
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          size="sm"
+          onClick={submit}
+          disabled={!name.trim() || submitting || Boolean(nameError)}
+          data-testid="starter-create-button"
+        >
+          {submitting ? (
+            <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <IconPlus className="h-3.5 w-3.5" />
+          )}
+          Create app
+        </Button>
+      </div>
+
+      {error ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {error}
+        </div>
+      ) : null}
+      {status && !error ? (
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {status}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Inline two-step app-creation flow: prompt → optional access picker → submit.
  * Used both in the popover form and in the dedicated `/new-app` page so the
@@ -160,10 +391,14 @@ function actionUrl(basePath: string | null, action: string): string {
 export function CreateAppFlow({
   onClose,
   className = "",
+  onScaffolded,
 }: {
   onClose?: () => void;
   className?: string;
+  /** Phase 6 — fired after a starter scaffold succeeds so the rail can refresh. */
+  onScaffolded?: (appId: string) => void;
 }) {
+  const [mode, setMode] = useState<"starter" | "prompt">("starter");
   const [step, setStep] = useState<"prompt" | "access">("prompt");
   const [prompt, setPrompt] = useState("");
   const [selectedSecretIds, setSelectedSecretIds] = useState<string[]>([]);
@@ -306,7 +541,48 @@ export function CreateAppFlow({
 
   return (
     <div className={`flex flex-col gap-3 ${className}`}>
-      {step === "prompt" ? (
+      <div
+        role="tablist"
+        aria-label="App creation mode"
+        className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "starter"}
+          data-testid="create-app-starter-tab"
+          onClick={() => setMode("starter")}
+          className={`flex-1 cursor-pointer rounded-sm px-2 py-1 text-xs font-medium transition ${
+            mode === "starter"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Pick a starter
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "prompt"}
+          data-testid="create-app-prompt-tab"
+          onClick={() => setMode("prompt")}
+          className={`flex-1 cursor-pointer rounded-sm px-2 py-1 text-xs font-medium transition ${
+            mode === "prompt"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Describe with agent
+        </button>
+      </div>
+
+      {mode === "starter" ? (
+        <StarterTemplatePicker
+          basePath={basePath}
+          onClose={onClose}
+          onScaffolded={onScaffolded}
+        />
+      ) : step === "prompt" ? (
         <>
           <div className="flex items-center justify-between gap-2 px-1">
             <p className="text-sm font-semibold text-foreground">Create app</p>
@@ -537,6 +813,7 @@ export function CreateAppFlow({
 export function CreateAppPopover({
   trigger,
   align = "center",
+  onScaffolded,
 }: CreateAppPopoverProps) {
   const [open, setOpen] = useState(false);
   return (
@@ -546,6 +823,7 @@ export function CreateAppPopover({
           <button
             type="button"
             className="flex min-h-32 cursor-pointer items-center justify-center rounded-lg border border-dashed bg-card p-4 text-sm font-medium text-muted-foreground transition hover:border-foreground/30 hover:text-foreground"
+            data-testid="create-app-trigger"
           >
             <span className="inline-flex items-center gap-2">
               <IconPlus size={16} />
@@ -559,7 +837,10 @@ export function CreateAppPopover({
         sideOffset={10}
         className="w-[calc(100vw-2rem)] rounded-xl p-3 shadow-xl sm:w-[460px]"
       >
-        <CreateAppFlow onClose={() => setOpen(false)} />
+        <CreateAppFlow
+          onClose={() => setOpen(false)}
+          onScaffolded={onScaffolded}
+        />
       </PopoverContent>
     </Popover>
   );

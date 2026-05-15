@@ -68,6 +68,7 @@
     "./client/transcription/BuilderTranscriptionCta": "./dist/client/transcription/BuilderTranscriptionCta.js",
     "./transcription/builder": "./dist/transcription/builder-transcription.js",
     "./adapters/cli": "./dist/adapters/cli/index.js",
+    "./cli/starter-scaffold": "./dist/cli/starter-scaffold.js",
     "./router": "./dist/router/index.js",
     "./collab": "./dist/collab/index.js",
     "./a2a": "./dist/a2a/index.js",
@@ -91,7 +92,8 @@
     "dist",
     "docs",
     "tsconfig.base.json",
-    "src/templates"
+    "src/templates",
+    "src/cli/starter-templates"
   ],
   "scripts": {
     "build": "tsc && node scripts/finalize-build.mjs",

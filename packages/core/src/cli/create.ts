@@ -14,6 +14,11 @@ import {
   allTemplateNames,
   type TemplateMeta,
 } from "./templates-meta.js";
+import {
+  isStarterTemplateId,
+  scaffoldFromStarterTemplate,
+  STARTER_TEMPLATES,
+} from "./starter-scaffold.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -191,7 +196,7 @@ async function createWorkspaceInteractive(
           : `Scaffolding ${titleCase(t)} (${i + 1}/${templates.length})...`,
       );
       const appDir = path.join(targetDir, "apps", t);
-      await scaffoldAppTemplate(appDir, t);
+      await scaffoldAppTemplate(appDir, t, t);
       s.message(
         `Configuring ${titleCase(t)} (${i + 1}/${templates.length})...`,
       );
@@ -419,7 +424,7 @@ async function scaffoldOneAppIntoWorkspace(
   );
 
   try {
-    await scaffoldAppTemplate(appDir, templateName);
+    await scaffoldAppTemplate(appDir, templateName, appName);
     replacePlaceholders(
       appDir,
       appName,
@@ -508,7 +513,7 @@ async function createStandaloneApp(
   const s = clack.spinner();
   s.start(`Downloading the ${template} template from GitHub…`);
   try {
-    await scaffoldAppTemplate(targetDir, template);
+    await scaffoldAppTemplate(targetDir, template, name);
     s.message(`Setting up ${name}…`);
     postProcessStandalone(name, targetDir, template);
     s.stop("App created!");
@@ -546,15 +551,31 @@ function cleanupOnFailure(targetDir: string): void {
 
 /**
  * Scaffold a single app template into `targetDir`. Resolves:
- *   - "blank" → bundled default template
+ *   - Phase 6 starter templates (crud-list, dashboard, agent-tool, blank-starter)
+ *     → copy from src/cli/starter-templates/<id>/ with placeholder substitution
+ *   - "blank" → bundled default template (legacy behavior)
  *   - "github:user/repo" → download the whole repo
  *   - first-party template name → download that subdir from BuilderIO/agent-native
  */
 async function scaffoldAppTemplate(
   targetDir: string,
   template: string,
+  appName?: string,
 ): Promise<void> {
   fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+
+  // Phase 6 starter templates ship inside @agent-native/core itself and use
+  // <NAME>/<name>/<Name> placeholders that resolve at scaffold time. They
+  // override the legacy "blank" alias when the alias matches a starter id.
+  if (isStarterTemplateId(template) && template !== "blank") {
+    const name = (appName || template).toLowerCase();
+    scaffoldFromStarterTemplate({
+      name,
+      template,
+      targetDir,
+    });
+    return;
+  }
 
   if (template === "blank") {
     const packageRoot = path.resolve(__dirname, "../..");

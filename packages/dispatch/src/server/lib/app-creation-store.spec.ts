@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runWithRequestContext } from "@agent-native/core/server";
-import { listWorkspaceApps } from "./app-creation-store.js";
+import {
+  listStarterTemplates,
+  listWorkspaceApps,
+} from "./app-creation-store.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -47,5 +50,23 @@ describe("listWorkspaceApps", () => {
       }),
     );
     expect(apps.map((app) => app.id)).toEqual(["dispatch", "todo"]);
+  });
+});
+
+describe("listStarterTemplates", () => {
+  it("exposes the four Phase 6 starter templates", async () => {
+    const templates = await listStarterTemplates();
+    expect(templates.map((t) => t.id).sort()).toEqual([
+      "agent-tool",
+      "blank",
+      "crud-list",
+      "dashboard",
+    ]);
+    for (const tpl of templates) {
+      expect(tpl.label).toBeTruthy();
+      expect(tpl.hint).toBeTruthy();
+      expect(tpl.icon).toBeTruthy();
+      expect(tpl.description).toBeTruthy();
+    }
   });
 });

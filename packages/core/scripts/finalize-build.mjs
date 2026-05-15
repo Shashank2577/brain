@@ -16,6 +16,15 @@ import { join } from "node:path";
 
 rmSync("dist/templates", { recursive: true, force: true });
 cpSync("src/templates", "dist/templates", { recursive: true });
+
+// Phase 6 — copy the bundled starter templates into dist/ so the
+// `agent-native add-app --template <starter>` flow works when the CLI is
+// run from a published npm package, not just from src.
+rmSync("dist/cli/starter-templates", { recursive: true, force: true });
+cpSync("src/cli/starter-templates", "dist/cli/starter-templates", {
+  recursive: true,
+});
+
 mkdirSync("dist/styles", { recursive: true });
 for (const f of readdirSync("src/styles").filter((n) => n.endsWith(".css"))) {
   copyFileSync(join("src/styles", f), join("dist/styles", f));

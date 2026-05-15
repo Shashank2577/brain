@@ -1,0 +1,43 @@
+{
+  "name": "<name>",
+  "displayName": "<Name>",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "agent-native dev",
+    "build": "agent-native build",
+    "start": "agent-native start",
+    "test": "vitest --run",
+    "typecheck": "agent-native typecheck",
+    "action": "agent-native action",
+    "script": "agent-native script"
+  },
+  "dependencies": {
+    "@agent-native/core": "workspace:*",
+    "@tabler/icons-react": "catalog:",
+    "drizzle-orm": "^0.45.2",
+    "h3": "catalog:",
+    "isbot": "^5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.13.1",
+    "@react-router/fs-routes": "^7.13.1",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-query": "^5.99.2",
+    "@types/node": "^24.2.1",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react-swc": "^4.0.0",
+    "better-sqlite3": "^12.8.0",
+    "next-themes": "^0.4.6",
+    "prettier": "^3.6.2",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "^7.13.1",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "^4.1.5"
+  }
+}
