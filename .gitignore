@@ -65,6 +65,7 @@ templates/slides/data/exports/
 
 # Playwright/vitest test run state
 test-results/
+.test-results/
 
 # Wrangler local state
 .wrangler

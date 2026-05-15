@@ -46,12 +46,16 @@
     "dev:lazy:desktop": "node scripts/dev-lazy.ts --desktop",
     "dev:docs": "pnpm --filter @agent-native/docs dev",
     "dev:electron": "node scripts/dev-electron.ts",
-    "dev:electron:apps": "node scripts/dev-electron.ts --apps"
+    "dev:electron:apps": "node scripts/dev-electron.ts --apps",
+    "test:integration": "echo \"P7-prep placeholder: integration tests will live in tests/integration/ — see docs/delivery/phase-7-tests.md\" && exit 0",
+    "test:e2e": "playwright test",
+    "test:all": "./bin/test-fluid-os.sh"
   },
   "devDependencies": {
     "@changesets/cli": "2.31.0",
     "@cloudflare/vite-plugin": "^1.31.0",
     "@libsql/linux-x64-gnu": "^0.5.29",
+    "@playwright/test": "^1.60.0",
     "concurrently": "^9.1.0",
     "prettier": "^3.6.2",
     "wrangler": "^4.80.0"
