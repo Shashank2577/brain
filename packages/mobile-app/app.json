@@ -31,7 +31,8 @@
       "router": {},
       "eas": {
         "projectId": "b359544d-d83a-4384-8837-d87c02facba6"
-      }
+      },
+      "workspaceUrl": null
     },
     "owner": "steve8708"
   }

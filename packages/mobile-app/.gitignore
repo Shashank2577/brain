@@ -2,3 +2,5 @@ ios/
 android/
 .expo/
 node_modules/
+dist/
+web-build/

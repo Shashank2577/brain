@@ -33,6 +33,7 @@ import {
   setResponseStatus,
   getMethod,
   getCookie,
+  getHeader,
   type H3Event,
 } from "h3";
 import {
@@ -47,12 +48,17 @@ import type {
 } from "@agent-native/fluid-os/manifest";
 import {
   awaitBootstrap,
+  getAuthSecret,
   getH3App,
   getSession,
   readBody,
   runWithRequestContext,
   type NitroPluginDef,
 } from "@agent-native/core/server";
+import {
+  extractBearerToken,
+  verifyMobileToken,
+} from "../lib/mobile-token.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -615,13 +621,68 @@ function jsonError(
   return { ok: false, error: { code, message } };
 }
 
+/**
+ * Resolve the calling session from an HTTP event.
+ *
+ * Resolution order (Phase 8 / ADR-006):
+ *   1. Test override (`opts.resolveSession`) — unit tests skip the chain.
+ *   2. Mobile workspace JWT (`Authorization: Bearer <mobile-jwt>`) — the
+ *      mobile shell mints these via `POST /_agent-native/auth/mobile-token`.
+ *      A valid mobile JWT bypasses cookie auth entirely, so the WebView /
+ *      RN fetch path works without a cookie jar.
+ *   3. Workspace SSO cookie via `getSession()` — the existing path used by
+ *      every web shell request. Untouched by Phase 8.
+ *
+ * Cookie auth path is preserved exactly. The mobile-JWT check only fires
+ * when the `Authorization` header is present AND parses as a Bearer token
+ * AND verifies against `BETTER_AUTH_SECRET`. Any failure falls through to
+ * the cookie path so a stale or unsigned bearer doesn't lock out a user
+ * who is also signed in via cookies.
+ */
 async function readSessionForEvent(
   event: H3Event,
   opts: CapabilityRegistryPluginOptions,
 ): Promise<{ email?: string; orgId?: string; name?: string } | null> {
   if (opts.resolveSession) return opts.resolveSession(event);
-  // Default path: workspace SSO cookie via `getSession` (the core auth
-  // resolver already handles Better Auth + legacy cookies + bearer tokens).
+
+  // 1. Mobile bearer JWT (workspace token from /_agent-native/auth/mobile-token).
+  //    We verify it ourselves rather than letting `getSession` do it because
+  //    the core auth resolver treats Bearer tokens as legacy `sessions`-table
+  //    tokens, and we don't want to pollute that table with mobile sign-ins.
+  const authHeader = getHeader(event, "authorization");
+  const bearer = extractBearerToken(authHeader);
+  if (bearer && bearer.split(".").length === 3) {
+    try {
+      const secret = getAuthSecret();
+      const result = verifyMobileToken(bearer, secret);
+      if (result.ok === true) {
+        return {
+          email: result.payload.email,
+          orgId: result.payload.orgId,
+        };
+      }
+      // Invalid JWT — log once in dev so debugging is easier, then fall
+      // through to the cookie path. Production stays quiet to avoid log
+      // spam from clients passing stale tokens.
+      if (process.env.NODE_ENV !== "production") {
+        // result is now the failure branch; cast to access the reason field.
+        const reason = (result as { reason: string }).reason;
+        console.warn(
+          `[capability-registry] Mobile bearer JWT rejected: ${reason}`,
+        );
+      }
+    } catch (err) {
+      // `getAuthSecret()` throws in production when BETTER_AUTH_SECRET is
+      // missing. We log and fall through; cookie auth may still succeed.
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[capability-registry] Mobile bearer verify failed: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  // 2. Workspace SSO cookie path — unchanged from Phase 1.
   try {
     const session = await getSession(event);
     if (!session) {

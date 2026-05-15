@@ -75,6 +75,18 @@ export { default as dispatchAgentChatPlugin } from "./plugins/agent-chat.js";
 export { default as dispatchDbPlugin } from "./plugins/db.js";
 export { default as dispatchCoreRoutesPlugin } from "./plugins/core-routes.js";
 export {
+  default as dispatchMobileAuthPlugin,
+  buildMobileTokenHandler,
+} from "./plugins/mobile-auth.js";
+export {
+  signMobileToken,
+  verifyMobileToken,
+  extractBearerToken,
+  type MobileTokenClaims,
+  type MobileTokenVerifyResult,
+  type DecodedMobileTokenPayload,
+} from "./lib/mobile-token.js";
+export {
   default as dispatchCapabilityRegistryPlugin,
   createCapabilityRegistryPlugin,
   buildRegistry,

@@ -266,6 +266,16 @@ export {
   type VerifyResult as ShortLivedTokenVerifyResult,
 } from "./short-lived-token.js";
 
+// Lazy Better Auth accessor + the resolved signing secret. Exported so the
+// dispatch package can build a workspace-scoped mobile-token endpoint that
+// shares the same secret (Phase 8 / ADR-006).
+export {
+  getBetterAuth,
+  getBetterAuthSync,
+  getAuthSecret,
+  type BetterAuthInstance,
+} from "./better-auth-instance.js";
+
 // SSR handler is NOT re-exported here — it uses a virtual module
 // (virtual:react-router/server-build) that only exists at Vite dev/build time.
 // Including it in this barrel would break the esbuild CF Pages bundler.
