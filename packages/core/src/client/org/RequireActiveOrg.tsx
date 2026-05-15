@@ -26,6 +26,16 @@ export interface RequireActiveOrgProps {
   description?: string;
   /** Optional extra classes on the blocking pane wrapper. */
   className?: string;
+  /**
+   * When true, render a "Skip for now" link below the create-org form so users
+   * can explore the app in personal scope without joining/creating an org.
+   * The skip is session-scoped (resets on reload). Off by default — apps that
+   * genuinely require an org (multi-tenant data, team-scoped flows) should
+   * leave it off.
+   */
+  allowSkip?: boolean;
+  /** Optional callback fired when the user clicks "Skip for now". */
+  onSkip?: () => void;
 }
 
 /**
@@ -49,8 +59,11 @@ export function RequireActiveOrg({
   title = "Create your organization",
   description = "This app organizes your content by team. Create an organization to continue — you can invite teammates afterward.",
   className,
+  allowSkip = false,
+  onSkip,
 }: RequireActiveOrgProps) {
   const { data: org, isLoading, isError, error, refetch } = useOrg();
+  const [skipped, setSkipped] = useState(false);
 
   if (isLoading) return null;
 
@@ -68,7 +81,7 @@ export function RequireActiveOrg({
     );
   }
 
-  if (org?.orgId) return <>{children}</>;
+  if (org?.orgId || skipped) return <>{children}</>;
 
   return (
     <CreateOrgPane
@@ -78,6 +91,11 @@ export function RequireActiveOrg({
       title={title}
       description={description}
       className={className}
+      allowSkip={allowSkip}
+      onSkip={() => {
+        setSkipped(true);
+        onSkip?.();
+      }}
     />
   );
 }
@@ -123,6 +141,8 @@ function CreateOrgPane({
   title,
   description,
   className,
+  allowSkip,
+  onSkip,
 }: {
   pendingInvitations: Array<{
     id: string;
@@ -135,6 +155,8 @@ function CreateOrgPane({
   title: string;
   description: string;
   className?: string;
+  allowSkip: boolean;
+  onSkip: () => void;
 }) {
   const createOrg = useCreateOrg();
   const acceptInvitation = useAcceptInvitation();
@@ -311,6 +333,17 @@ function CreateOrgPane({
               {createOrg.isPending ? "Creating…" : "Create organization"}
             </button>
           </form>
+        )}
+
+        {allowSkip && (
+          <button
+            type="button"
+            onClick={onSkip}
+            disabled={busy}
+            className="mt-4 w-full text-center text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            Skip for now
+          </button>
         )}
       </div>
     </div>

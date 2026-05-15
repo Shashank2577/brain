@@ -213,6 +213,7 @@ export function LibraryLayout({ children }: LibraryLayoutProps) {
         <RequireActiveOrg
           title="Create your organization"
           description="Clips organizes recordings by team. Create an organization to continue — you can invite teammates afterward."
+          allowSkip
         >
           <div className="flex h-full w-full">
             {/* Mobile backdrop */}
