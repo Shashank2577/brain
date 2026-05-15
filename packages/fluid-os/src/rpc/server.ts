@@ -1,6 +1,8 @@
 import type { IdentityProvider } from "../identity/session.js";
 import type { CapabilityRegistry } from "../registry.js";
 import type { CapabilityContext } from "../manifest/types.js";
+import type { AgentClient } from "../agent/client.js";
+import { StubAgentClient } from "../agent/client.js";
 import {
   LIST_APPS_PATH,
   LIST_CAPABILITIES_PATH,
@@ -13,6 +15,7 @@ export interface RpcHandlerOpts {
   registry: CapabilityRegistry;
   identity: IdentityProvider;
   osAppId?: string;
+  agent?: AgentClient;
 }
 
 export interface RpcHandler {
@@ -22,6 +25,7 @@ export interface RpcHandler {
 export function createRpcHandler(opts: RpcHandlerOpts): RpcHandler {
   const { registry, identity } = opts;
   const osAppId = opts.osAppId ?? "fluid-os";
+  const agent: AgentClient = opts.agent ?? new StubAgentClient();
 
   return {
     async handle(req: Request): Promise<Response> {
@@ -72,14 +76,18 @@ export function createRpcHandler(opts: RpcHandlerOpts): RpcHandler {
           return errorResponse(400, "invalid_input", parsed.error.message);
         }
 
+        const user = identity.toUser(claims);
         const ctx: CapabilityContext = {
-          user: identity.toUser(claims),
+          user,
           caller: { appId: callerAppId },
           call: async (fqid, input) => {
             const sub = registry.resolve(fqid);
             if (!sub) throw new Error(`Capability "${fqid}" not found`);
             const subInput = sub.def.input.parse(input);
             return (await sub.def.handler(subInput, { ...ctx, caller: { appId: resolved.app.id } })) as never;
+          },
+          agent: async (prompt, agentOpts) => {
+            return agent.ask({ prompt, user, callerAppId, schema: agentOpts?.schema });
           },
         };
 

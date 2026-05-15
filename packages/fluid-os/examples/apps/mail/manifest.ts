@@ -37,6 +37,8 @@ export const mailApp = defineApp({
     { path: "/sent", label: "Sent" },
     { path: "/compose", label: "Compose" },
   ],
+  agentGuidance:
+    "Mail is the only app that owns email. Other apps should call mail.send-email and never reimplement it. Use mail.find-contact to resolve a name to an address before sending.",
   capabilities: {
     "send-email": {
       description: "Send an email immediately. Returns the sent message id.",

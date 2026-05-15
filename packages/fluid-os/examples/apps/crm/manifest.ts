@@ -76,6 +76,8 @@ export const crmApp = defineApp({
     { path: "/contacts", label: "Contacts" },
     { path: "/pipeline", label: "Pipeline" },
   ],
+  agentGuidance:
+    "CRM owns contacts, deals, and activity history. It does NOT own email or calendar — it composes them. crm.log-outreach is the right way to send an email TO a CRM contact (it calls mail.send-email and logs the activity). crm.schedule-meeting is the right way to book a meeting WITH a CRM contact (it calls calendar.create-event and logs the activity).",
   capabilities: {
     "create-contact": {
       description: "Create a CRM contact.",

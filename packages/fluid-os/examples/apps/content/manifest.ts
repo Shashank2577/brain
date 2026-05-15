@@ -30,6 +30,8 @@ export const contentApp = defineApp({
     { path: "/", label: "All documents" },
     { path: "/new", label: "New document" },
   ],
+  agentGuidance:
+    "Content is the canonical owner of long-form documents. Meeting notes, briefs, knowledge-base articles — all of them go through content.create-document. Slides and meetings seed from content; never duplicate it.",
   capabilities: {
     "create-document": {
       description: "Create a document. Returns the saved document.",

@@ -35,27 +35,17 @@ function id(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-const STUB_TRANSCRIPT = `Alice: Thanks for jumping on, Carol. Two things on my mind today.
-Carol: Sounds good — fire away.
-Alice: First, the launch plan. We're targeting Monday, but the migration guide isn't ready.
-Carol: I'll own the migration guide and have a draft by Friday.
-Alice: Second, the demo video — we promised it to design partners last week.
-Carol: Bob is recording it tomorrow. He'll post it in #beta by EOD Wednesday.
-Alice: Perfect. Let's sync again Thursday after the migration guide draft.
-Carol: Booked.`;
-
-function extractActionItems(text: string): { who: string; what: string }[] {
+function parseActionItemLines(text: string): { who: string; what: string }[] {
   const items: { who: string; what: string }[] = [];
-  for (const line of text.split("\n")) {
-    const m = line.match(/^(\w+):\s+(I'll|I will|Let me|I'm going to)\s+(.+)$/i);
-    if (m) items.push({ who: m[1], what: m[3].replace(/[.!?]$/, "") });
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/^[\s\-*•]+/, "").trim();
+    if (!line) continue;
+    const m = line.match(/^(\w[\w\s]*?):\s+(.+)$/);
+    if (m) {
+      items.push({ who: m[1].trim(), what: m[2].replace(/[.!?]$/, "").trim() });
+    }
   }
   return items;
-}
-
-function summarize(text: string): string {
-  const lines = text.split("\n").filter(Boolean);
-  return lines.slice(0, 3).join(" ").slice(0, 240) + (lines.length > 3 ? "…" : "");
 }
 
 export const meetingsApp = defineApp({
@@ -72,6 +62,8 @@ export const meetingsApp = defineApp({
     "mail.find-contact",
   ],
   routes: [{ path: "/", label: "All recordings" }],
+  agentGuidance:
+    "Always upload-recording first to get an id. Then call process-recording, which fans out to transcribe → content.create-document → tasks.create (one task per action item) → calendar.list-events for linking. The transcribe/summary/action-item steps all go through ctx.agent — do not inline an LLM call.",
   capabilities: {
     "upload-recording": {
       description:
@@ -89,31 +81,46 @@ export const meetingsApp = defineApp({
       },
     },
     transcribe: {
-      description:
-        "Transcribe a recording. STUB: returns a canned transcript. Wire this to your transcription service or delegate to the agent.",
+      description: "Transcribe a recording. Delegates the actual transcription to the agent via ctx.agent.",
       input: z.object({ recordingId: z.string() }),
       output: z.object({ id: z.string(), text: z.string(), speakers: z.array(z.string()) }),
-      tags: ["write", "ai-stub"],
+      tags: ["write", "ai"],
       handler: async (input, ctx) => {
         const rec = recordings.get(input.recordingId);
         if (!rec || rec.ownerId !== ctx.user.id) throw new Error("recording not found");
-        const text = STUB_TRANSCRIPT;
-        const speakers = Array.from(new Set(text.split("\n").map((l) => l.split(":")[0]).filter(Boolean)));
+        const text = await ctx.agent(
+          [
+            "Transcribe the meeting recording referenced below into plain text with one line per speaker turn.",
+            "Format: \"<Speaker Name>: <utterance>\". Keep ~8-12 turns.",
+            `Recording source: ${rec.source.kind} :: ${rec.source.ref}`,
+            `Duration: ${rec.durationSec}s`,
+          ].join("\n"),
+        );
+        const speakers = Array.from(
+          new Set(text.split("\n").map((l) => l.split(":")[0]?.trim()).filter((s) => s && s.length > 0 && s.length < 40)),
+        );
         const t: Transcript = { id: id("trn"), recordingId: rec.id, text, speakers, createdAt: Date.now() };
         transcripts.set(t.id, t);
         return { id: t.id, text: t.text, speakers: t.speakers };
       },
     },
     "extract-action-items": {
-      description:
-        "Pull commitments out of a transcript. STUB: simple regex over speaker lines; swap for the agent.",
+      description: "Pull commitments out of a transcript via ctx.agent.",
       input: z.object({ transcriptId: z.string() }),
       output: z.array(z.object({ who: z.string(), what: z.string() })),
-      tags: ["read", "ai-stub"],
-      handler: async (input) => {
+      tags: ["read", "ai"],
+      handler: async (input, ctx) => {
         const t = transcripts.get(input.transcriptId);
         if (!t) throw new Error("transcript not found");
-        return extractActionItems(t.text);
+        const raw = await ctx.agent(
+          [
+            "Extract concrete commitments from this transcript.",
+            'Reply with one item per line in the exact form "Name: what they will do" (no other commentary).',
+            "",
+            t.text,
+          ].join("\n"),
+        );
+        return parseActionItemLines(raw);
       },
     },
     "process-recording": {
@@ -139,8 +146,16 @@ export const meetingsApp = defineApp({
           speakers: string[];
         };
 
-        const summary = summarize(transcript.text);
-        const actionItems = extractActionItems(transcript.text);
+        const summary = await ctx.agent(
+          [
+            "Summarize this meeting transcript in 2 short sentences. Plain prose, no bullets.",
+            "",
+            transcript.text,
+          ].join("\n"),
+        );
+        const actionItems = (await ctx.call("meetings.extract-action-items", {
+          transcriptId: transcript.id,
+        })) as { who: string; what: string }[];
 
         const docBody = [
           `Summary: ${summary}`,

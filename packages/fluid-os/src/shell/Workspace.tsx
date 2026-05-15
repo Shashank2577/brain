@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   IconLayoutGrid,
   IconLogout,
   IconMessageCircle,
   IconArrowsRightLeft,
+  IconPlus,
 } from "@tabler/icons-react";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
 import { CapabilityCard } from "./CapabilityCard";
+import { CreateAppWizard } from "./CreateAppWizard";
 import { fetchApps, fetchCapabilities } from "./api";
 import type { AppSummary, CapabilityEntry, FluidUser } from "./types";
 import { cn } from "./lib/cn";
@@ -20,16 +22,22 @@ export function Workspace({ user }: Props) {
   const [apps, setApps] = useState<AppSummary[]>([]);
   const [capabilities, setCapabilities] = useState<CapabilityEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [a, c] = await Promise.all([fetchApps(), fetchCapabilities()]);
+    setApps(a);
+    setCapabilities(c);
+    return a;
+  }, []);
 
   useEffect(() => {
-    Promise.all([fetchApps(), fetchCapabilities()])
-      .then(([a, c]) => {
-        setApps(a);
-        setCapabilities(c);
-        if (a.length > 0) setActiveId(a[0].id);
+    refresh()
+      .then((a) => {
+        if (a.length > 0) setActiveId((curr) => curr ?? a[0].id);
       })
       .catch((err) => console.error(err));
-  }, []);
+  }, [refresh]);
 
   const capsByApp = useMemo(() => {
     const map = new Map<string, CapabilityEntry[]>();
@@ -45,18 +53,26 @@ export function Workspace({ user }: Props) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header user={user} />
+      <Header user={user} onCreateApp={() => setWizardOpen(true)} />
       <div className="flex-1 grid grid-cols-[280px_1fr] min-h-0">
         <Sidebar apps={apps} capsByApp={capsByApp} activeId={activeId} onSelect={setActiveId} />
         <main className="overflow-y-auto px-8 py-7">
           {active ? <AppDetail app={active} capabilities={activeCaps} /> : <EmptyState />}
         </main>
       </div>
+      <CreateAppWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={async (newId) => {
+          await refresh();
+          setActiveId(newId);
+        }}
+      />
     </div>
   );
 }
 
-function Header({ user }: { user: FluidUser }) {
+function Header({ user, onCreateApp }: { user: FluidUser; onCreateApp: () => void }) {
   return (
     <header className="flex items-center justify-between px-5 py-3 border-b border-border bg-sidebar">
       <div className="flex items-center gap-2 font-semibold tracking-wide">
@@ -64,6 +80,10 @@ function Header({ user }: { user: FluidUser }) {
         Fluid OS
       </div>
       <div className="flex items-center gap-3 text-sm">
+        <Button size="sm" variant="outline" onClick={onCreateApp}>
+          <IconPlus size={14} />
+          Create app
+        </Button>
         {user.avatarUrl && (
           <img src={user.avatarUrl} alt="" className="h-7 w-7 rounded-full border border-border" />
         )}

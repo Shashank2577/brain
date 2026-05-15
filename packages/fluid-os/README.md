@@ -148,17 +148,32 @@ Build it with `pnpm build:shell`, then run `pnpm demo:server` (no demo flow) or 
 
 ## Creating new apps
 
-`pnpm create-app print-registry` prints every installed app + capability so a developer (or Claude) can see what to consume before scaffolding. Then:
+Three equivalent entry points share one `ScaffoldSpec` shape:
 
-```
-pnpm create-app billing \
-  --description "Invoices and subscriptions." \
-  --consumes "mail.send-email,crm.list-contacts" \
-  --capability "create-invoice:Create an invoice for a contact." \
-  --capability "list-invoices:List the user's invoices."
+1. **Wizard in the shell** — `Create app` button in the header. Reads the live registry, suggests which capabilities to `consume` from a plain-English description, scaffolds the manifest, **hot-installs it on the running OS** in one click. The new app appears in the sidebar without a restart.
+2. **`POST /_fluid-os/scaffold`** — body matches the wizard's spec. Same hot-install path. Use this from agents, scripts, or external integrations.
+3. **`pnpm create-app` CLI** — prints the registry first, validates `--consumes` against the live capability list, writes the manifest. Does not hot-install (the server is local to its own process).
+
+See [CREATING-APPS.md](./CREATING-APPS.md) for the full agent-driven flow.
+
+## How the agent learns what's installed
+
+The OS publishes a **live** skill at two endpoints — both generated from the registry on every request, so nothing can drift:
+
+- `GET /_fluid-os/skill.md` — markdown the agent can ingest as a session skill. Header + per-app section (description, capabilities, agent guidance) + cross-app patterns + scaffolding flow.
+- `GET /_fluid-os/skill.json` — same data, structured.
+
+Each manifest carries an optional `agentGuidance` field — a few sentences of pattern guidance specific to that app (e.g. "Mail is the only app that owns email — call `mail.send-email`, don't reimplement it"). The OS aggregates every app's guidance into the skill output.
+
+## AI work goes through the agent
+
+Capability handlers get `ctx.agent(prompt)` in addition to `ctx.call(...)`. The OS routes that call to a pluggable `AgentClient` (`packages/fluid-os/src/agent/client.ts`); the default is a stub that returns `[agent not configured]`. Plug in a real client at host construction time:
+
+```ts
+const os = new FluidOs({ secret, agent: new MyAgentClient(...) });
 ```
 
-The scaffolder validates every `--consumes` id against the live registry and warns on unknown capabilities. The generated manifest has stub handlers and consumes wiring. See [CREATING-APPS.md](./CREATING-APPS.md) for the full Claude flow.
+The `meetings` app uses this for transcription, summarization, and action-item extraction — no inline LLM calls in any handler.
 
 ## What's still ahead
 

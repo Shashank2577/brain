@@ -33,6 +33,54 @@ async function getToken(): Promise<string> {
   return body.token;
 }
 
+export interface SuggestedCapability {
+  id: string;
+  appId: string;
+  description: string;
+  score: number;
+}
+
+export async function suggestConsumes(description: string): Promise<SuggestedCapability[]> {
+  const res = await fetch("/_fluid-os/scaffold/suggest", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ description }),
+  });
+  if (!res.ok) throw new Error("suggest failed");
+  const body = (await res.json()) as { suggestions: SuggestedCapability[] };
+  return body.suggestions;
+}
+
+export interface ScaffoldRequest {
+  id: string;
+  name: string;
+  description: string;
+  consumes: string[];
+  capabilities: { id: string; description: string }[];
+  agentGuidance?: string;
+}
+
+export interface ScaffoldResult {
+  ok: true;
+  file: string;
+  app: { id: string; name: string; description: string; consumes: string[]; capabilities: string[] };
+}
+
+export async function scaffoldApp(req: ScaffoldRequest): Promise<ScaffoldResult> {
+  const res = await fetch("/_fluid-os/scaffold", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(req),
+  });
+  const body = await res.json();
+  if (!res.ok) {
+    const message = (body as { message?: string }).message ?? (body as { error?: string }).error ?? "scaffold failed";
+    throw new Error(message);
+  }
+  return body as ScaffoldResult;
+}
+
 export async function invokeCapability(capability: string, input: unknown): Promise<unknown> {
   const token = await getToken();
   const res = await fetch("/_fluid-os/rpc", {

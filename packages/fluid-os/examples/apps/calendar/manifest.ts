@@ -32,6 +32,8 @@ export const calendarApp = defineApp({
     { path: "/", label: "Day" },
     { path: "/week", label: "Week" },
   ],
+  agentGuidance:
+    "Calendar is the canonical owner of events. Always call calendar.check-availability before calendar.create-event to avoid double-booking.",
   capabilities: {
     "create-event": {
       description: "Schedule an event. Times are unix milliseconds. Attendees are email addresses.",

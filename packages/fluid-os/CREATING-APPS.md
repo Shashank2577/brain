@@ -7,7 +7,24 @@ what other apps already do. The Fluid OS contract makes that explicit:
 every app declares what capabilities it **exposes** and what other apps'
 capabilities it **consumes**.
 
-The flow below is what Claude should follow every time.
+There are three equivalent entry points to this flow:
+
+| Surface | When to use |
+| --- | --- |
+| **Wizard in the OS shell** (`Create app` button) | A user is in the shell and wants to create an app interactively. Reads the live registry, suggests capabilities to consume based on the description, scaffolds + hot-installs in one click. |
+| **`POST /_fluid-os/scaffold`** | An agent / script / external integration creates an app. Same body shape as the wizard. |
+| **`pnpm create-app` CLI** | A developer creates an app from their terminal. Same result — writes the manifest file. (Does not hot-install; you restart the server.) |
+
+All three paths take the same `ScaffoldSpec` shape:
+
+```ts
+{ id, name, description, consumes: string[], capabilities: { id, description }[], agentGuidance? }
+```
+
+The agent itself reads `/_fluid-os/skill.md` (or `/_fluid-os/skill.json`)
+at session start. That endpoint is generated from the live registry —
+every installed app + its agent-guidance + cross-app patterns +
+scaffolding flow — so the agent always sees what's actually running.
 
 ## Step 1 — Read the registry, do not guess
 

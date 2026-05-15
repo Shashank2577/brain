@@ -13,6 +13,7 @@ export interface CapabilityContext {
   user: OsUser;
   caller: { appId: string };
   call: <O = unknown>(capabilityId: string, input: unknown) => Promise<O>;
+  agent: (prompt: string, opts?: { schema?: unknown }) => Promise<string>;
 }
 
 export interface CapabilityDef<I = unknown, O = unknown> {
@@ -41,6 +42,7 @@ export interface AppManifest<C extends CapabilityMap = CapabilityMap> {
   capabilities: C;
   consumes?: string[];
   permissions?: string[];
+  agentGuidance?: string;
 }
 
 export interface CapabilityEntry {
