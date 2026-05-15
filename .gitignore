@@ -87,3 +87,6 @@ templates/*/.env.local
 templates/*/.env.*.local
 test-reports/
 *.tsbuildinfo
+
+# Local-only shared SQLite DB used by dev:lazy workspace mode
+.dev-data/
