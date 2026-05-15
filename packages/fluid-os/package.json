@@ -1,0 +1,33 @@
+{
+  "name": "@agent-native/fluid-os",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "description": "Fluid OS — host shell, capability registry, and inter-app RPC for an ecosystem of independent agent-native apps that share identity and discover each other's features.",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./manifest": "./src/manifest/index.ts",
+    "./registry": "./src/registry.ts",
+    "./identity": "./src/identity/index.ts",
+    "./rpc/server": "./src/rpc/server.ts",
+    "./rpc/client": "./src/rpc/client.ts",
+    "./agent": "./src/agent/tools.ts",
+    "./host": "./src/host/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "demo": "tsx examples/host/server.ts"
+  },
+  "dependencies": {
+    "h3": "catalog:",
+    "jose": "^6.2.2",
+    "nanoid": "^5.1.9",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}
