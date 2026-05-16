@@ -128,10 +128,28 @@ export function mountActionRoutes(
   options?: MountActionRoutesOptions,
 ) {
   const mounted: string[] = [];
+  // Track every action name we know about — including agent-only ones
+  // (entry.http === false). The fallback handler below uses this set to
+  // distinguish "action exists but is agent-only" (→ 403) from "action
+  // does not exist at all" (→ 404) when an HTTP caller hits the action
+  // dispatcher prefix. Without the fallback, unmatched POSTs would fall
+  // through to the React Router SSR catch-all in `[...page].get.ts`,
+  // which only handles GET — Nitro's renderer service then crashes with
+  // `NitroViteError: No fetch handler exported from virtual:react-router/server-build`
+  // because RR's request handler can't dispatch a POST to a route tree
+  // that has no `action` exports. That 500 surfaced on 79 endpoints in
+  // the 2026-05-16 HTTP coverage sweep (docs/qa-reports/HTTP-API-COVERAGE.md).
+  const allActionNames = new Set<string>(Object.keys(actions));
+  const agentOnlyActions = new Set<string>();
 
   for (const [name, entry] of Object.entries(actions)) {
-    // Skip agent-only actions
-    if (entry.http === false) continue;
+    // Skip agent-only actions — but remember the name so the fallback
+    // can return a structured 403 instead of letting the request fall
+    // through to the SSR catch-all (which crashes the dev server).
+    if (entry.http === false) {
+      agentOnlyActions.add(name);
+      continue;
+    }
 
     const method = entry.http?.method ?? "POST";
     const path = entry.http?.path ?? name;
@@ -341,6 +359,66 @@ export function mountActionRoutes(
 
     mounted.push(`${method} ${routePath}`);
   }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Fallback handler for the `/_agent-native/actions` prefix.
+  //
+  // Registered AFTER every specific action handler so it only fires when
+  // no specific route matched — typical cases:
+  //   • The action exists but is declared `http: false` (agent-only).
+  //   • The action name doesn't exist in the registry at all.
+  //   • The caller used the wrong sub-path (e.g. `/actions/foo/bar`).
+  //
+  // Before this fallback existed, those requests fell through to the
+  // React Router SSR catch-all in `server/routes/[...page].get.ts`,
+  // which only handles GET. A POST to `/_agent-native/actions/navigate`
+  // therefore crashed Nitro's renderer service with the misleading
+  // `NitroViteError: No fetch handler exported from virtual:react-router/server-build`
+  // — observed on 79 endpoints across 10 templates in
+  // docs/qa-reports/HTTP-API-COVERAGE.md (2026-05-16). The fix is
+  // strictly additive: known HTTP-callable actions still hit their own
+  // handlers first; only unmatched calls now get a clean JSON error.
+  getH3App(nitroApp).use(
+    ROUTE_PREFIX,
+    defineEventHandler(async (event) => {
+      const reqMethod = getMethod(event);
+      if (reqMethod === "OPTIONS") {
+        return handleOptionsRequest(event);
+      }
+      setResponseHeader(event, "Cache-Control", "no-store");
+
+      // Recover the action name from the URL. registerMiddleware strips
+      // the mount prefix so `event.url.pathname` is the sub-path RELATIVE
+      // to ROUTE_PREFIX (e.g. "/" or "/navigate" or "/foo/bar").
+      const subPath = (event.url?.pathname ?? "/").replace(/^\/+/, "");
+      const actionName = subPath.split("/")[0] || "";
+
+      if (actionName && agentOnlyActions.has(actionName)) {
+        setResponseStatus(event, 403);
+        return {
+          error: "agent_only",
+          message: `Action '${actionName}' is agent-only (declared http: false) and cannot be called over HTTP.`,
+        };
+      }
+
+      if (actionName && allActionNames.has(actionName)) {
+        // Action exists and is HTTP-callable but the caller hit a sub-path
+        // we don't recognize (the specific handler would have matched the
+        // root). Treat as a wrong-path 404.
+        setResponseStatus(event, 404);
+        return {
+          error: "not_found",
+          message: `No action handler registered at '${event.url?.pathname ?? ""}'.`,
+        };
+      }
+
+      setResponseStatus(event, 404);
+      return {
+        error: "unknown_action",
+        message: `No action named '${actionName}' is registered on this app.`,
+      };
+    }),
+  );
 
   if (mounted.length > 0 && process.env.DEBUG)
     console.log(
