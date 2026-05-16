@@ -7,8 +7,8 @@ import {
 } from "@agent-native/core/oauth-tokens";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { ComposeAttachment, EmailMessage } from "@shared/types.js";
-import { markdownPreviewSnippet } from "@shared/markdown.js";
+import type { ComposeAttachment, EmailMessage } from "../../shared/types.js";
+import { markdownPreviewSnippet } from "../../shared/markdown.js";
 import { db, schema } from "../db/index.js";
 import { isConnected, gmailToEmailMessage } from "./google-auth.js";
 import {

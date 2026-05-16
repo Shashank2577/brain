@@ -25,7 +25,7 @@ import {
   executeActions,
   type ActionContext,
 } from "./automation-actions.js";
-import type { AutomationAction } from "@shared/types.js";
+import type { AutomationAction } from "../../shared/types.js";
 
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 const MAX_EMAILS_PER_RUN = 50;

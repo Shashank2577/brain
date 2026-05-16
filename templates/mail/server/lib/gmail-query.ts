@@ -1,4 +1,4 @@
-import { isInboxScopedAppLabel } from "@shared/gmail-labels.js";
+import { isInboxScopedAppLabel } from "../../shared/gmail-labels.js";
 
 export const VIEW_QUERIES: Record<string, string> = {
   inbox: "in:inbox -in:sent",

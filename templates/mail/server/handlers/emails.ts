@@ -9,11 +9,11 @@ import {
   type H3Event,
 } from "h3";
 import { nanoid } from "nanoid";
-import type { EmailMessage, Label, UserSettings } from "@shared/types.js";
+import type { EmailMessage, Label, UserSettings } from "../../shared/types.js";
 import {
   markdownPreviewSnippet,
   normalizeMarkdownHardBreaks,
-} from "@shared/markdown.js";
+} from "../../shared/markdown.js";
 import { getUserSetting, putUserSetting } from "@agent-native/core/settings";
 import { readBody, getSession } from "@agent-native/core/server";
 import {
@@ -51,7 +51,7 @@ import { buildGmailEmailSearchQuery } from "../lib/gmail-query.js";
 import {
   isInboxScopedAppLabel,
   mailLabelMatches,
-} from "@shared/gmail-labels.js";
+} from "../../shared/gmail-labels.js";
 import {
   incrementSendFrequency,
   getContactFrequencyMap,

@@ -23,7 +23,7 @@ import {
 } from "@agent-native/core/oauth-tokens";
 import { isOAuthConnected, getOAuthAccounts } from "@agent-native/core/server";
 import { getUserSetting, putUserSetting } from "@agent-native/core/settings";
-import { decodeCommonHtmlEntities } from "@shared/markdown.js";
+import { decodeCommonHtmlEntities } from "../../shared/markdown.js";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
