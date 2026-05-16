@@ -25,7 +25,7 @@ import {
   markEmbeddedInsideDispatchShell,
   notifyShellOfNavigation,
 } from "@agent-native/core/client";
-import { OrgSwitcher, RequireActiveOrg } from "@agent-native/core/client/org";
+import { OrgSwitcher } from "@agent-native/core/client/org";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -213,7 +213,11 @@ export function LibraryLayout({ children }: LibraryLayoutProps) {
 
   // Phase 2: when embedded, we render the children without an outer AgentSidebar.
   // Use a small wrapper component to keep the JSX symmetrical.
-  const AgentWrap = ({ children: agentWrapChildren }: { children: React.ReactNode }) =>
+  const AgentWrap = ({
+    children: agentWrapChildren,
+  }: {
+    children: React.ReactNode;
+  }) =>
     isEmbedded ? (
       <>{agentWrapChildren}</>
     ) : (
@@ -235,11 +239,13 @@ export function LibraryLayout({ children }: LibraryLayoutProps) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AgentWrap>
-        <RequireActiveOrg
-          title="Create your organization"
-          description="Clips organizes recordings by team. Create an organization to continue — you can invite teammates afterward."
-          allowSkip
-        >
+        {/* Org creation is no longer a blocking gate. First-time users land
+            directly in the library; an org is auto-provisioned on demand
+            (AUTO_CREATE_DEFAULT_ORG) or prompted contextually when the user
+            performs an action that genuinely needs one (sharing, inviting,
+            creating team content). The OrgSwitcher in the sidebar exposes
+            "Create organization" for users who want one explicitly. */}
+        <>
           <div className="flex h-full w-full">
             {/* Mobile backdrop */}
             {sidebarOpen && (
@@ -575,7 +581,7 @@ export function LibraryLayout({ children }: LibraryLayoutProps) {
               </main>
             </div>
           </div>
-        </RequireActiveOrg>
+        </>
       </AgentWrap>
 
       {/* New folder dialog (library root) */}
