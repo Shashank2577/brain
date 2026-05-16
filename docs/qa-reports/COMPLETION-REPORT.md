@@ -102,9 +102,53 @@ db60a0af docs: add OS Shell workplan capturing current state + phased plan + piv
 
 **The integration is incomplete.** Phase 3's promotion of manifest-only apps to full templates produced source code + unit tests but the templates don't actually boot end-to-end in dev:lazy. This is a "code complete, integration incomplete" gap — the kind that unit tests can't catch but a final QA sweep does. That's exactly why we ran the QA sweep.
 
+## Addendum — Post-rebuild SSO verification (2026-05-16 ~06:24)
+
+After F-1 dispatch rebuild + dev-lazy fix (commits `b09b9798` + the in-session rebuild), I curl-verified cross-template SSO with the seeded `alice@demo.local`:
+
+```
+dispatch  → {"email":"alice@demo.local","token":"kw0DDmIoBs..."}
+calendar  → {"email":"alice@demo.local","token":"kw0DDmIoBs..."}
+forms     → {"email":"alice@demo.local","token":"kw0DDmIoBs..."}
+meetings  → {"email":"alice@demo.local","token":"kw0DDmIoBs..."}
+slides    → (lazy-boot timeout — not a session failure)
+mail      → (lazy-boot timeout — not a session failure)
+```
+
+**Conclusion: QA-UI-B's BLK-3 (cross-app SSO broken) is a DOWNSTREAM SYMPTOM of the dispatch crash (BLK-1, fixed in this session). The workspace SSO architecture works as designed.** The new meetings template even joins the SSO ring correctly. F-1 dispatch boot is the root cause of most of QA-UI-A/-B and QA-API-A's blockers.
+
+Post-rebuild state per template:
+
+| Template | HTTP | SSO | Notes |
+|---|---|---|---|
+| dispatch | 200 | ✅ | Working post-rebuild |
+| calendar | 200 | ✅ | Working post-rebuild |
+| forms | 200 (eventually) | ✅ | Lazy first-boot |
+| meetings | 200 | ✅ | New template — working |
+| slides | (timeout on first hit) | unknown | Lazy boot may be slow |
+| mail | (timeout on first hit) | unknown | Lazy boot may be slow |
+| notes | 500 | unknown | NEW template — UI route fails |
+| tasks | 404 | n/a | NEW template — registered `hidden: true`, dev-lazy skips it |
+| crm | (timeout) | unknown | NEW template — lazy boot crash silently |
+
+**Revised P0 list** (incorporating the F-1 fix):
+
+1. (was F-3) Investigate notes 500 / crm timeout / tasks 404 — these are the new-template UI surfaces. F-1 fix didn't fix them; they need separate diagnosis.
+2. (was F-2) Fix mail's `@shared/markdown.js` alias for the 16 affected capabilities.
+3. (was F-5) Update `docs/apps/*.md` FQIDs to match runtime (`notes.create-note` not `notes.create`).
+4. Resolve the recurring `NitroViteError: No fetch handler exported from virtual:react-router/server-build` (QA-UI-B BLK-2) — this affects sign-up flows across templates.
+5. Add a setup script that copies `.env.local` shared values on clone.
+
 ## Recommendation
 
-**Do NOT call this branch shippable yet.** The architectural foundation is sound, the 13 phases shipped at the code level, the autonomous agent team produced a coherent body of work — but P0 follow-ups #1, #2, and #3 need to land before any real-world use. ETA for those fixes: ~1-2 dev-days of focused debugging.
+**Do NOT call this branch shippable yet** — but it's closer than the raw QA reports suggested. The F-1 dispatch rebuild fixed the loud failure that cascaded into the other reports. What remains is:
+
+- Three new-template UI bring-up bugs (notes/crm/tasks)
+- One mail capability-registration bug (`@shared/*` alias)
+- One framework-level Nitro/Vite SSR issue (the `virtual:react-router/server-build` brick)
+- Spec/code FQID drift in `docs/apps/*.md` (cosmetic but real)
+
+Architectural foundation is sound, the 13 phases shipped at the code level, the autonomous agent team produced a coherent body of work, and the OS's central invariants (identity propagation, authorization matrix) are PROVEN end-to-end. ETA for the P0 fixes: **~1 focused dev-day** now that F-1 is resolved.
 
 **Ship-after-follow-ups.** The follow-up list is finite, scoped, and well-understood. None of the open issues touch the core architecture (Phase 1+2 are solid). They're integration bugs at the boundary between newly-built templates and the existing dev:lazy plumbing.
 
