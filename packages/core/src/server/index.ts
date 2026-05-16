@@ -276,6 +276,18 @@ export {
   type BetterAuthInstance,
 } from "./better-auth-instance.js";
 
+// Mobile bearer JWT (workspace token). Lives in core so `getSession()` can
+// verify the JWT before the framework-global 401 guard fires — see P0 #8.
+export {
+  signMobileToken,
+  verifyMobileToken,
+  extractBearerToken,
+  type MobileTokenScope,
+  type MobileTokenClaims,
+  type DecodedMobileTokenPayload,
+  type MobileTokenVerifyResult,
+} from "./mobile-token.js";
+
 // SSR handler is NOT re-exported here — it uses a virtual module
 // (virtual:react-router/server-build) that only exists at Vite dev/build time.
 // Including it in this barrel would break the esbuild CF Pages bundler.

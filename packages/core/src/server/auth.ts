@@ -58,8 +58,13 @@ import {
   intType,
   retryOnDdlRace,
 } from "../db/client.js";
-import { getBetterAuth, getBetterAuthSync } from "./better-auth-instance.js";
+import {
+  getBetterAuth,
+  getBetterAuthSync,
+  getAuthSecret,
+} from "./better-auth-instance.js";
 import type { BetterAuthConfig } from "./better-auth-instance.js";
+import { extractBearerToken, verifyMobileToken } from "./mobile-token.js";
 import {
   getAllowedCorsOrigin,
   readCorsAllowedOrigins,
@@ -1409,6 +1414,47 @@ export async function getSession(event: H3Event): Promise<AuthSession | null> {
   // 7. Mobile WebView bridge — _session query param
   const querySession = await promoteQuerySession(event);
   if (querySession) return querySession;
+
+  // 8. Mobile bearer JWT — workspace token minted by
+  // `POST /_agent-native/auth/mobile-token` (dispatch). Resolved HERE,
+  // inside `getSession`, so the framework-global 401 guard (which runs
+  // `getSession()` first) accepts mobile requests without a cookie. Before
+  // this lived in `getSession`, the bearer-JWT resolver ran inside the
+  // capability-registry plugin AFTER the global guard had already 401'd
+  // every mobile request — P0 #8.
+  //
+  // We only verify a real three-part JWT to avoid colliding with the
+  // legacy Bearer-token paths above (`getBearerLegacySession`), which
+  // accept opaque session tokens. A non-JWT bearer falls through silently;
+  // a JWT with a bad signature/scope/exp also falls through (logged in dev).
+  const bearer = extractBearerToken(getHeader(event, "authorization"));
+  if (bearer && bearer.split(".").length === 3) {
+    try {
+      const secret = getAuthSecret();
+      const result = verifyMobileToken(bearer, secret);
+      if (result.ok === true) {
+        return {
+          email: result.payload.email,
+          token: bearer,
+          orgId: result.payload.orgId,
+        };
+      }
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[auth] Mobile bearer JWT rejected: ${(result as { reason: string }).reason}`,
+        );
+      }
+    } catch (err) {
+      // `getAuthSecret()` throws in production when BETTER_AUTH_SECRET is
+      // missing. Cookie auth above would also fail in that state, so the
+      // null return is correct; just log so it's diagnosable.
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[auth] Mobile bearer verify failed: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
 
   return null;
 }

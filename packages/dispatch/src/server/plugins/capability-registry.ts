@@ -47,14 +47,12 @@ import type {
 } from "@agent-native/fluid-os/manifest";
 import {
   awaitBootstrap,
-  getAuthSecret,
   getH3App,
   getSession,
   readBody,
   runWithRequestContext,
   type NitroPluginDef,
 } from "@agent-native/core/server";
-import { extractBearerToken, verifyMobileToken } from "../lib/mobile-token.js";
 import { TEMPLATES } from "@agent-native/core/cli/templates-meta";
 
 /**
