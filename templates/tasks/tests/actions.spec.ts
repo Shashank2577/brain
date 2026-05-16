@@ -296,37 +296,39 @@ describe("tasks.create with alsoNote — inter-app integration", () => {
   // remocking is brittle).
   let notesShouldFail = false;
 
-  // vi.doMock intercepts the dynamic `import("@agent-native/dispatch/server")`
-  // that `actions/create.ts` performs lazily. We give it a tiny dispatcher
-  // that:
-  //   - dispatchCapability resolves notes.create-note inside the live ALS
-  //     scope so `getRequestUserEmail()` returns the calling user — proving
-  //     identity propagation through the registry.
-  //   - getCapabilityRegistry returns a non-null sentinel so the production
-  //     action thinks the registry is wired up.
-  vi.doMock("@agent-native/dispatch/server", async () => {
+  // vi.doMock intercepts `callCapability` from `@agent-native/core/server`
+  // (the Item A3 cross-app entry point). Our tiny stub:
+  //   - On "notes.create-note", records the live ALS userEmail / inputs to
+  //     prove identity propagation, then returns { id: "note_synthetic_123" }.
+  //   - On any other fqid, throws RpcError(unknown_capability).
+  //   - When notesShouldFail is true, throws RpcError(handler_error).
+  vi.doMock("@agent-native/core/server", async (importOriginal) => {
+    const actual =
+      await importOriginal<typeof import("@agent-native/core/server")>();
     const { getRequestUserEmail } = await vi.importActual<
       typeof import("@agent-native/core/server/request-context")
     >("@agent-native/core/server/request-context");
     return {
-      getCapabilityRegistry: () => ({ __test: true }),
-      dispatchCapability: async ({ fqid, input }: any) => {
+      ...actual,
+      callCapability: async (fqid: string, input: any) => {
         if (fqid !== "notes.create-note") {
-          return {
-            ok: false,
-            error: { code: "unknown_capability", message: fqid },
-          };
+          throw new actual.RpcError(
+            { code: "unknown_capability", message: fqid, fqid },
+            fqid,
+            404,
+          );
         }
         if (notesShouldFail) {
-          return {
-            ok: false,
-            error: { code: "handler_error", message: "notes is down" },
-          };
+          throw new actual.RpcError(
+            { code: "handler_error", message: "notes is down", fqid },
+            fqid,
+            500,
+          );
         }
         observedNoteOwner = getRequestUserEmail();
         observedNoteTitle = input.title;
         observedNoteBody = input.body;
-        return { ok: true, output: { id: "note_synthetic_123" } };
+        return { id: "note_synthetic_123" };
       },
     };
   });

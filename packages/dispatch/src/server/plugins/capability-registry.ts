@@ -47,6 +47,7 @@ import type {
 } from "@agent-native/fluid-os/manifest";
 import {
   awaitBootstrap,
+  getAuthSecret,
   getH3App,
   getSession,
   readBody,
@@ -54,6 +55,11 @@ import {
   type NitroPluginDef,
 } from "@agent-native/core/server";
 import { TEMPLATES } from "@agent-native/core/cli/templates-meta";
+import {
+  IDENTITY_HEADER_NAME,
+  IdentityHeaderError,
+  verifyIdentity,
+} from "../lib/identity-header.js";
 
 /**
  * Build the default `appMetadata` map keyed by template id so the registry's
@@ -171,6 +177,15 @@ const REGISTRY_ROUTE_PREFIX = "/_agent-native/registry";
 const APPS_ROUTE = `${REGISTRY_ROUTE_PREFIX}/apps`;
 const CAPABILITIES_ROUTE = `${REGISTRY_ROUTE_PREFIX}/capabilities`;
 const RPC_ROUTE = `${REGISTRY_ROUTE_PREFIX}/rpc`;
+
+/**
+ * Item A3 broker route. Cross-worker `ctx.call(...)` from a non-dispatch
+ * worker POSTs here with a signed identity header. Sibling to the existing
+ * `/registry/rpc` route, which authenticates via session cookie; this one
+ * authenticates via the signed header so a worker process can talk to
+ * dispatch without a browser session in flight.
+ */
+const RPC_BROKER_ROUTE = "/_agent-native/rpc/dispatch";
 
 const WORKSPACE_COOKIE = "an_session_workspace";
 
@@ -851,6 +866,137 @@ function buildRpcHandler(
   });
 }
 
+/**
+ * Pure broker dispatch — used by the HTTP handler AND by unit tests so we
+ * don't have to spin up Nitro. Verifies the identity header, looks up the
+ * FQID, runs the capability under the carried identity, and returns a status
+ * + envelope. Exported for tests.
+ */
+export async function brokerDispatch(opts: {
+  registry: CapabilityRegistry;
+  identityHeader: string | undefined;
+  body: { fqid?: unknown; input?: unknown } | undefined;
+  secret: string;
+}): Promise<{
+  status: number;
+  response:
+    | { ok: true; output: unknown }
+    | { ok: false; error: { code: string; message: string; fqid?: string } };
+}> {
+  let identity: { userEmail: string; orgId?: string };
+  try {
+    identity = verifyIdentity(opts.identityHeader, opts.secret);
+  } catch (err) {
+    const code =
+      err instanceof IdentityHeaderError ? err.code : "bad_signature";
+    return {
+      status: 401,
+      response: {
+        ok: false,
+        error: {
+          code: code === "expired" ? "identity_expired" : "unauthenticated",
+          message: (err as Error).message,
+        },
+      },
+    };
+  }
+  const fqid =
+    typeof opts.body?.fqid === "string" ? (opts.body.fqid as string) : "";
+  if (!fqid) {
+    return {
+      status: 400,
+      response: {
+        ok: false,
+        error: { code: "missing_fqid", message: "Field `fqid` is required" },
+      },
+    };
+  }
+  const user: OsUser = {
+    id: identity.userEmail,
+    email: identity.userEmail,
+    orgId: identity.orgId,
+  };
+  const result = await runWithRequestContext(
+    { userEmail: identity.userEmail, orgId: identity.orgId },
+    async () =>
+      dispatchCapability({
+        registry: opts.registry,
+        fqid,
+        input: opts.body?.input,
+        user,
+      }),
+  );
+  if (result.ok === false) {
+    const code = result.error.code;
+    const status =
+      code === "unknown_capability"
+        ? 404
+        : code === "invalid_input"
+          ? 400
+          : code === "cycle_detected"
+            ? 409
+            : 500;
+    return {
+      status,
+      response: {
+        ok: false,
+        error: { code, message: result.error.message, fqid },
+      },
+    };
+  }
+  return { status: 200, response: result };
+}
+
+/**
+ * Item A3 broker handler — accepts `{ fqid, input }` and a signed
+ * `x-fluid-identity` header, verifies the header against BETTER_AUTH_SECRET,
+ * runs the capability under the carried identity, and returns either
+ * `{ ok: true, output }` or `{ ok: false, error: { code, message, fqid? } }`.
+ *
+ * Identity rule (CLAUDE.md, load-bearing): the propagated identity is the
+ * user's, NEVER the calling app's. The header carries only `{ userEmail,
+ * orgId }` — there is no "calling app id" claim because no consumer should
+ * ever read one.
+ */
+function buildBrokerHandler(
+  registry: CapabilityRegistry,
+  opts: CapabilityRegistryPluginOptions,
+) {
+  void opts; // reserved for test hooks (override secret resolution)
+  return defineEventHandler(async (event) => {
+    if (getMethod(event) !== "POST") {
+      setResponseStatus(event, 405);
+      return {
+        ok: false,
+        error: { code: "method_not_allowed", message: "POST required" },
+      };
+    }
+    const identityHeader =
+      (event.node.req.headers[IDENTITY_HEADER_NAME] as string | undefined) ??
+      undefined;
+    let body: { fqid?: unknown; input?: unknown } | undefined;
+    try {
+      body = (await readBody(event)) as
+        | { fqid?: unknown; input?: unknown }
+        | undefined;
+    } catch {
+      setResponseStatus(event, 400);
+      return {
+        ok: false,
+        error: { code: "invalid_body", message: "Body must be JSON" },
+      };
+    }
+    const { status, response } = await brokerDispatch({
+      registry,
+      identityHeader,
+      body,
+      secret: getAuthSecret(),
+    });
+    setResponseStatus(event, status);
+    return response;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Nitro plugin factory
 // ---------------------------------------------------------------------------
@@ -882,6 +1028,7 @@ export function createCapabilityRegistryPlugin(
     h3App.use(APPS_ROUTE, buildAppsHandler(registry));
     h3App.use(CAPABILITIES_ROUTE, buildCapabilitiesHandler(registry));
     h3App.use(RPC_ROUTE, buildRpcHandler(registry, opts));
+    h3App.use(RPC_BROKER_ROUTE, buildBrokerHandler(registry, opts));
   };
 }
 

@@ -3,6 +3,7 @@ import {
   getRequestUserEmail,
   getRequestOrgId,
 } from "@agent-native/core/server/request-context";
+import { callCapability, RpcError } from "@agent-native/core/server";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { getDb, schema } from "../server/db/index.js";
@@ -53,46 +54,27 @@ export default defineAction({
     let linkWarning: string | null = null;
 
     if (args.alsoNote) {
+      // Item A3: cross-app calls go through `callCapability` from core. The
+      // helper picks the in-process fast path when this code runs inside
+      // dispatch, and the signed-identity HTTP path when it runs in any
+      // other worker. Either way the propagated identity is the current
+      // user (read from the ALS request context), never the calling app.
       try {
-        // Lazy-import so this template still type-checks and tests when the
-        // dispatch package is not yet built. The Phase 1 capability registry
-        // exposes `dispatchCapability` for in-process FQID routing.
-        const dispatchMod = await import("@agent-native/dispatch/server");
-        const registry = dispatchMod.getCapabilityRegistry();
-        if (!registry) {
-          linkWarning = "capability registry not available";
-        } else {
-          const result = await dispatchMod.dispatchCapability({
-            registry,
-            fqid: "notes.create-note",
-            input: { title: args.text, body: "" },
-            user: {
-              id: ownerEmail,
-              email: ownerEmail,
-              orgId: orgId ?? undefined,
-            },
-          });
-          if (result.ok) {
-            const out = result.output as { id?: string } | undefined;
-            linkedNoteId = out?.id ?? null;
-            if (!linkedNoteId) {
-              linkWarning =
-                "notes.create-note returned no id; task created without link";
-            }
-          } else {
-            // `result` is `{ ok: false; error: { code, message } }` — the
-            // discriminated union narrows safely here. Cast through `unknown`
-            // because the imported type alias from dispatch may not match
-            // exactly if dispatch's declarations haven't been built yet.
-            const failed = result as {
-              ok: false;
-              error: { code: string; message: string };
-            };
-            linkWarning = `notes.create-note failed: ${failed.error.message}`;
-          }
+        const out = await callCapability<{ id?: string } | undefined>(
+          "notes.create-note",
+          { title: args.text, body: "" },
+        );
+        linkedNoteId = out?.id ?? null;
+        if (!linkedNoteId) {
+          linkWarning =
+            "notes.create-note returned no id; task created without link";
         }
       } catch (err) {
-        linkWarning = `notes.create-note threw: ${(err as Error).message}`;
+        if (err instanceof RpcError) {
+          linkWarning = `notes.create-note failed: ${err.code} — ${err.message}`;
+        } else {
+          linkWarning = `notes.create-note threw: ${(err as Error).message}`;
+        }
       }
     }
 

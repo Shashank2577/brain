@@ -297,6 +297,30 @@ export {
 // defineNitroPlugin is an identity function; this typed wrapper lets templates use it
 // without resolving `nitro/runtime` (which requires Nitro's virtual modules at runtime).
 export type NitroPluginDef = (nitroApp: any) => void | Promise<void>;
+
+// Item A3 — typed RPC client + ctx.call routing. Cross-app capability
+// invocation goes through dispatch via a signed identity header (see
+// `./ctx.ts` and `./rpc-client.ts`).
+export {
+  callViaDispatch,
+  RpcError,
+  type CallViaDispatchOpts,
+  type RpcErrorEnvelope,
+} from "./rpc-client.js";
+export {
+  callCapability,
+  __resetCallCapabilityEnv,
+  type CallCapabilityOpts,
+} from "./ctx.js";
+export {
+  signIdentity,
+  verifyIdentity,
+  IdentityHeaderError,
+  IDENTITY_HEADER_NAME,
+  type Identity,
+  type SignOpts,
+  type VerifyOpts,
+} from "./identity-header.js";
 export function defineNitroPlugin(def: NitroPluginDef): NitroPluginDef {
   return def;
 }

@@ -96,9 +96,19 @@ export {
   discoverTemplatesDir,
   scanTemplatesForCapabilities,
   getCapabilityRegistry,
+  brokerDispatch,
   type CapabilityRegistryPluginOptions,
   type RegistryRpcResponse,
   type ActionLike,
 } from "./plugins/capability-registry.js";
+export {
+  signIdentity,
+  verifyIdentity,
+  IdentityHeaderError,
+  IDENTITY_HEADER_NAME,
+  type Identity,
+  type SignOpts,
+  type VerifyOpts,
+} from "./lib/identity-header.js";
 
 export type { DispatchConfig } from "../config.js";
