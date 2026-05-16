@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { IconApps } from "@tabler/icons-react";
 import { AgentSidebar, agentNativePath } from "@agent-native/core/client";
 import { SuperAppRail, type RegistryApp } from "@/components/SuperAppRail";
 import { ShellContentHost } from "@/components/ShellContentHost";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 /**
  * Phase 2 — Super-App Shell route.
@@ -163,12 +171,38 @@ export default function ShellRoute() {
           suggestions={SIDEBAR_SUGGESTIONS}
         >
           {appsError && apps && apps.length === 0 ? (
-            <div className="flex h-full w-full items-center justify-center p-8 text-sm text-muted-foreground">
-              Could not load registry apps: {appsError}
+            <div className="flex h-full w-full items-center justify-center p-8">
+              <Card className="max-w-md">
+                <CardHeader>
+                  <CardTitle>Could not load apps</CardTitle>
+                  <CardDescription>{appsError}</CardDescription>
+                </CardHeader>
+              </Card>
             </div>
           ) : !activeAppId ? (
-            <div className="flex h-full w-full items-center justify-center p-8 text-sm text-muted-foreground">
-              {apps === null ? "Loading apps…" : "No apps installed yet."}
+            <div className="flex h-full w-full items-center justify-center p-8">
+              <Card className="max-w-md text-center">
+                <CardHeader className="items-center">
+                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full border bg-muted/40 text-muted-foreground">
+                    <IconApps size={24} />
+                  </div>
+                  <CardTitle>
+                    {apps === null ? "Loading apps" : "No app selected"}
+                  </CardTitle>
+                  <CardDescription>
+                    {apps === null
+                      ? "Fetching the workspace app registry…"
+                      : apps.length === 0
+                        ? "No apps are installed in this workspace yet. Scaffold one from the Apps page to get started."
+                        : "Pick an app from the rail on the left to open it here."}
+                  </CardDescription>
+                </CardHeader>
+                {apps && apps.length > 0 ? (
+                  <CardContent className="text-xs text-muted-foreground">
+                    Tip: press ⌘1–⌘9 to jump between apps.
+                  </CardContent>
+                ) : null}
+              </Card>
             </div>
           ) : (
             <ShellContentHost

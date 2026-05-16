@@ -77,7 +77,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 import { cn } from "./utils.js";
 import { agentNativePath } from "./api-path.js";
-import { getFrameOrigin, isInFrame, isTrustedFrameMessage } from "./frame.js";
+import {
+  getFrameOrigin,
+  isInFrame,
+  isTrustedFrameMessage,
+  isInsideDispatchShell,
+} from "./frame.js";
 import {
   getInitialAgentSidebarOpen,
   SIDEBAR_OPEN_KEY,
@@ -1819,6 +1824,52 @@ export interface AgentSidebarProps {
  * Use AgentToggleButton in your header to open/close it.
  */
 export function AgentSidebar({
+  children,
+  emptyStateText = "How can I help you?",
+  suggestions,
+  defaultSidebarWidth,
+  sidebarWidth,
+  position = "right",
+  defaultOpen = false,
+  animateMobile = false,
+  scope,
+}: AgentSidebarProps) {
+  // When rendered inside the Dispatch super-app shell iframe, the outer shell
+  // already mounts its own AgentSidebar (with its own Setup & configuration
+  // panel, chat history, composer, etc). Rendering a second one here causes
+  // two-to-three duplicate panels to stack on `/dispatch/shell` (QA-UX P0
+  // #6.1). Detect the embedded case and render the children as a bare layout
+  // so the shell stays single-chrome.
+  //
+  // Track in state (not just an inline call) so SSR returns the unembedded
+  // tree and the client re-renders to the embedded layout after hydration —
+  // hydration mismatch would otherwise nuke the entire subtree.
+  const [embeddedInShell, setEmbeddedInShell] = useState(false);
+  useEffect(() => {
+    if (isInsideDispatchShell()) {
+      setEmbeddedInShell(true);
+    }
+  }, []);
+  if (embeddedInShell) {
+    return <>{children}</>;
+  }
+  return (
+    <AgentSidebarInner
+      emptyStateText={emptyStateText}
+      suggestions={suggestions}
+      defaultSidebarWidth={defaultSidebarWidth}
+      sidebarWidth={sidebarWidth}
+      position={position}
+      defaultOpen={defaultOpen}
+      animateMobile={animateMobile}
+      scope={scope}
+    >
+      {children}
+    </AgentSidebarInner>
+  );
+}
+
+function AgentSidebarInner({
   children,
   emptyStateText = "How can I help you?",
   suggestions,

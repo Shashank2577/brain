@@ -665,10 +665,22 @@ export function getEnvBuilderProjectId(): string | null {
  * the container their apps live inside (rather than only seeing app names like
  * "starter" / "dispatch" with no parent context).
  */
-export function getWorkspaceInfo(): WorkspaceInfo {
+export async function getWorkspaceInfo(): Promise<WorkspaceInfo> {
   const rootPath = findWorkspaceRoot();
+  // App count must come from the SAME source the Apps grid uses
+  // (`listWorkspaceApps`) — otherwise the header reads e.g. "0 apps" while
+  // the grid shows 13 (QA-UX P0 #15 / #3.1). Filesystem-on-disk counts only
+  // reflect locally-scaffolded apps, not gateway/manifest-discovered ones,
+  // which is why the header was wrong on hosted/dev gateways.
+  let appCount = 0;
+  try {
+    const apps = await listWorkspaceApps({ includeAgentCards: false });
+    appCount = apps.filter((app) => !app.isDispatch).length;
+  } catch {
+    appCount = 0;
+  }
   if (!rootPath) {
-    return { name: null, displayName: null, rootPath: null, appCount: 0 };
+    return { name: null, displayName: null, rootPath: null, appCount };
   }
   const pkg = readJson(path.join(rootPath, "package.json"));
   const rawName = typeof pkg?.name === "string" ? pkg.name.trim() : "";
@@ -681,17 +693,6 @@ export function getWorkspaceInfo(): WorkspaceInfo {
   const rawDisplay =
     typeof pkg?.displayName === "string" ? pkg.displayName.trim() : "";
   const displayName = rawDisplay || (name ? titleCase(name) : null);
-  let appCount = 0;
-  const appsDir = path.join(rootPath, "apps");
-  if (fs.existsSync(appsDir)) {
-    try {
-      appCount = fs
-        .readdirSync(appsDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory()).length;
-    } catch {
-      appCount = 0;
-    }
-  }
   return {
     name,
     displayName,
