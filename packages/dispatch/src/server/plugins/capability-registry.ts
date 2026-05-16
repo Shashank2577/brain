@@ -33,7 +33,6 @@ import {
   setResponseStatus,
   getMethod,
   getCookie,
-  getHeader,
   type H3Event,
 } from "h3";
 import {
@@ -55,10 +54,45 @@ import {
   runWithRequestContext,
   type NitroPluginDef,
 } from "@agent-native/core/server";
-import {
-  extractBearerToken,
-  verifyMobileToken,
-} from "../lib/mobile-token.js";
+import { extractBearerToken, verifyMobileToken } from "../lib/mobile-token.js";
+import { TEMPLATES } from "@agent-native/core/cli/templates-meta";
+
+/**
+ * Build the default `appMetadata` map keyed by template id so the registry's
+ * `/apps` response carries each app's declared Tabler icon / label /
+ * description. Without this, every app comes back with `icon: null` and the
+ * SuperAppRail falls back to a deterministic-but-collision-prone icon pool —
+ * which manifested as "every app shows the same icon" in the shell.
+ */
+function defaultAppMetadataFromTemplates(): Record<
+  string,
+  { name?: string; description?: string; icon?: string; url?: string }
+> {
+  const out: Record<
+    string,
+    { name?: string; description?: string; icon?: string; url?: string }
+  > = {};
+  for (const tpl of TEMPLATES) {
+    out[tpl.name] = {
+      name: tpl.label,
+      description: tpl.description ?? tpl.hint,
+      icon: tpl.icon,
+    };
+  }
+  return out;
+}
+
+/**
+ * Set of template ids whose `hidden: true` flag means they MUST NOT surface
+ * in user-facing pickers — including the dispatch SuperAppRail. The registry
+ * still registers their capabilities (other apps may legitimately call them
+ * via `ctx.call(...)`), but `/registry/apps` strips them so the shell rail
+ * doesn't leak templates that the docs/CLI allow-list also excludes. Same
+ * contract as `scripts/guard-template-list.mjs`.
+ */
+const HIDDEN_TEMPLATE_IDS: ReadonlySet<string> = new Set(
+  TEMPLATES.filter((t) => t.hidden).map((t) => t.name),
+);
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -624,20 +658,15 @@ function jsonError(
 /**
  * Resolve the calling session from an HTTP event.
  *
- * Resolution order (Phase 8 / ADR-006):
+ * Resolution order (Phase 8 / ADR-006, post-P0 #8):
  *   1. Test override (`opts.resolveSession`) — unit tests skip the chain.
- *   2. Mobile workspace JWT (`Authorization: Bearer <mobile-jwt>`) — the
- *      mobile shell mints these via `POST /_agent-native/auth/mobile-token`.
- *      A valid mobile JWT bypasses cookie auth entirely, so the WebView /
- *      RN fetch path works without a cookie jar.
- *   3. Workspace SSO cookie via `getSession()` — the existing path used by
- *      every web shell request. Untouched by Phase 8.
- *
- * Cookie auth path is preserved exactly. The mobile-JWT check only fires
- * when the `Authorization` header is present AND parses as a Bearer token
- * AND verifies against `BETTER_AUTH_SECRET`. Any failure falls through to
- * the cookie path so a stale or unsigned bearer doesn't lock out a user
- * who is also signed in via cookies.
+ *   2. `getSession()` — handles cookie, legacy bearer, BYOA, desktop SSO,
+ *      and (since P0 #8) the mobile bearer JWT. Before the fix, this
+ *      function verified the mobile JWT itself; that resolver moved INTO
+ *      `getSession()` so the framework-global 401 guard accepts mobile
+ *      requests too. The guard calls `getSession()` first and 401s when
+ *      it returns null — which is exactly what was breaking every mobile
+ *      request on all 13 templates.
  */
 async function readSessionForEvent(
   event: H3Event,
@@ -645,44 +674,8 @@ async function readSessionForEvent(
 ): Promise<{ email?: string; orgId?: string; name?: string } | null> {
   if (opts.resolveSession) return opts.resolveSession(event);
 
-  // 1. Mobile bearer JWT (workspace token from /_agent-native/auth/mobile-token).
-  //    We verify it ourselves rather than letting `getSession` do it because
-  //    the core auth resolver treats Bearer tokens as legacy `sessions`-table
-  //    tokens, and we don't want to pollute that table with mobile sign-ins.
-  const authHeader = getHeader(event, "authorization");
-  const bearer = extractBearerToken(authHeader);
-  if (bearer && bearer.split(".").length === 3) {
-    try {
-      const secret = getAuthSecret();
-      const result = verifyMobileToken(bearer, secret);
-      if (result.ok === true) {
-        return {
-          email: result.payload.email,
-          orgId: result.payload.orgId,
-        };
-      }
-      // Invalid JWT — log once in dev so debugging is easier, then fall
-      // through to the cookie path. Production stays quiet to avoid log
-      // spam from clients passing stale tokens.
-      if (process.env.NODE_ENV !== "production") {
-        // result is now the failure branch; cast to access the reason field.
-        const reason = (result as { reason: string }).reason;
-        console.warn(
-          `[capability-registry] Mobile bearer JWT rejected: ${reason}`,
-        );
-      }
-    } catch (err) {
-      // `getAuthSecret()` throws in production when BETTER_AUTH_SECRET is
-      // missing. We log and fall through; cookie auth may still succeed.
-      if (process.env.NODE_ENV !== "production") {
-        console.warn(
-          `[capability-registry] Mobile bearer verify failed: ${(err as Error).message}`,
-        );
-      }
-    }
-  }
-
-  // 2. Workspace SSO cookie path — unchanged from Phase 1.
+  // Workspace SSO cookie / mobile bearer JWT / legacy bearer / desktop SSO
+  // are all resolved by `getSession()` now — see core/server/auth.ts.
   try {
     const session = await getSession(event);
     if (!session) {
@@ -715,14 +708,22 @@ async function readSessionForEvent(
 function buildAppsHandler(registry: CapabilityRegistry) {
   return defineEventHandler(() => {
     return {
-      apps: registry.listApps().map((app) => ({
-        id: app.id,
-        name: app.name,
-        description: app.description,
-        icon: app.icon ?? null,
-        url: app.url,
-        capabilities: Object.keys(app.capabilities ?? {}).length,
-      })),
+      apps: registry
+        .listApps()
+        // Hidden templates (calls, meeting-notes, voice, scheduling, issues,
+        // recruiting, images, macros) are first-party but intentionally not
+        // surfaced in user-facing pickers. The rail / shell consumes this
+        // endpoint, so the filter has to live here, not in the rail —
+        // otherwise every consumer would have to re-implement the allow-list.
+        .filter((app) => !HIDDEN_TEMPLATE_IDS.has(app.id))
+        .map((app) => ({
+          id: app.id,
+          name: app.name,
+          description: app.description,
+          icon: app.icon ?? null,
+          url: app.url,
+          capabilities: Object.keys(app.capabilities ?? {}).length,
+        })),
     };
   });
 }
@@ -864,9 +865,19 @@ function buildRpcHandler(
 export function createCapabilityRegistryPlugin(
   opts: CapabilityRegistryPluginOptions = {},
 ): NitroPluginDef {
+  // Layer template-derived metadata (icon, label, description) underneath any
+  // caller-provided overrides so the production path gets correct rail icons
+  // out of the box, while tests passing their own `appMetadata` still win.
+  const mergedOpts: CapabilityRegistryPluginOptions = {
+    ...opts,
+    appMetadata: {
+      ...defaultAppMetadataFromTemplates(),
+      ...(opts.appMetadata ?? {}),
+    },
+  };
   return async (nitroApp: any) => {
     await awaitBootstrap(nitroApp);
-    const registry = await buildRegistry(opts);
+    const registry = await buildRegistry(mergedOpts);
     activeRegistry = registry;
 
     const h3App = getH3App(nitroApp);

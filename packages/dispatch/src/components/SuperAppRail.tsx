@@ -1,17 +1,29 @@
 import { useEffect, useMemo, type ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  IconAddressBook,
   IconApps,
+  IconBrandJira,
   IconBrush,
   IconCalendarMonth,
+  IconCalendarTime,
   IconChartBar,
+  IconCheckbox,
   IconClipboardList,
+  IconCode,
   IconFileText,
   IconLayoutDashboard,
   IconMail,
+  IconMessageCircle,
+  IconMicrophone,
+  IconNote,
+  IconPhone,
+  IconPhoto,
   IconPresentation,
   IconScreenShare,
   IconSparkles,
+  IconUsers,
+  IconUsersGroup,
   IconVideo,
 } from "@tabler/icons-react";
 import { agentNativePath } from "@agent-native/core/client";
@@ -67,21 +79,37 @@ type RailIcon = ComponentType<{
 }>;
 
 const ICON_BY_NAME: Record<string, RailIcon> = {
-  // Direct keys from `shared-app-config/templates.ts` `icon` field, plus a few
-  // common Tabler names so manifests that ship their own icon hint match.
+  // Direct keys from `shared-app-config/templates.ts` + the mirrored
+  // `@agent-native/core/cli/templates-meta` registry's `icon` field. Keep
+  // both sources in sync — when a new template adds a Tabler icon name, also
+  // add it here so the rail renders it instead of falling back to the
+  // collision-prone deterministic pool.
+  AddressBook: IconAddressBook,
   Apps: IconApps,
+  BarChart2: IconChartBar,
+  BrandJira: IconBrandJira,
   Brush: IconBrush,
   CalendarDays: IconCalendarMonth,
   CalendarMonth: IconCalendarMonth,
+  CalendarTime: IconCalendarTime,
   ChartBar: IconChartBar,
+  Checkbox: IconCheckbox,
   ClipboardList: IconClipboardList,
+  Code: IconCode,
   FileText: IconFileText,
   GalleryHorizontal: IconPresentation,
   LayoutDashboard: IconLayoutDashboard,
   Mail: IconMail,
+  MessageCircle: IconMessageCircle,
+  Microphone: IconMicrophone,
+  Note: IconNote,
+  Phone: IconPhone,
+  Photo: IconPhoto,
   Presentation: IconPresentation,
   ScreenShare: IconScreenShare,
   Sparkles: IconSparkles,
+  Users: IconUsers,
+  UsersGroup: IconUsersGroup,
   Video: IconVideo,
 };
 

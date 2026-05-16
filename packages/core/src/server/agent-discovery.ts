@@ -390,24 +390,33 @@ function discoverWorkspaceAgents(selfAppId?: string): DiscoveredAgent[] {
   const workspaceApps = loadWorkspaceAppsManifest();
   if (!workspaceApps) return [];
 
-  return workspaceApps
-    .filter((app) => app.id !== selfAppId)
-    .map((app) => {
-      const url = workspaceAppUrl(app);
-      if (!url) return null;
-      const builtin = BUILTIN_AGENTS.find((agent) => agent.id === app.id);
-      return {
-        id: app.id,
-        name: app.name,
-        description:
-          app.description ||
-          builtin?.description ||
-          `Workspace app mounted at ${app.path}`,
-        url,
-        color: builtin?.color || "#6B7280",
-      } satisfies DiscoveredAgent;
-    })
-    .filter((agent): agent is DiscoveredAgent => !!agent);
+  return (
+    workspaceApps
+      .filter((app) => app.id !== selfAppId)
+      // Mirror the `hidden` filter that `BUILTIN_AGENTS` applies — hidden
+      // first-party templates (calls, meeting-notes, voice, scheduling,
+      // issues, recruiting, images, macros) must not surface on the Agents
+      // page even when they happen to be mounted as a workspace app. Same
+      // contract that `scripts/guard-template-list.mjs` enforces for the
+      // homepage / docs sidebar / CLI catalog.
+      .filter((app) => !HIDDEN_FIRST_PARTY_AGENT_IDS.has(app.id))
+      .map((app) => {
+        const url = workspaceAppUrl(app);
+        if (!url) return null;
+        const builtin = BUILTIN_AGENTS.find((agent) => agent.id === app.id);
+        return {
+          id: app.id,
+          name: app.name,
+          description:
+            app.description ||
+            builtin?.description ||
+            `Workspace app mounted at ${app.path}`,
+          url,
+          color: builtin?.color || "#6B7280",
+        } satisfies DiscoveredAgent;
+      })
+      .filter((agent): agent is DiscoveredAgent => !!agent)
+  );
 }
 
 /**
