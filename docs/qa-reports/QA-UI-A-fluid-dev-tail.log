@@ -1,0 +1,80 @@
+[32m[crm][0m     at httpError (file:///Users/shashanksaxena/Documents/Personal/Code/fluid-system/node_modules/[4m.pnpm[24m/nitro@3.0.260415-beta_@libsql+client@0.15.15_better-sqlite3@12.8.0_chokidar@4.0.3_dotenv@17.4_pujmflt2h7w7tg6w5ybefkgrby/node_modules/[4mnitro[24m/dist/runtime/internal/vite/dev-worker.mjs:208:17)
+[32m[crm][0m     at ViteEnvRunner.fetch (file:///Users/shashanksaxena/Documents/Personal/Code/fluid-system/node_modules/[4m.pnpm[24m/nitro@3.0.260415-beta_@libsql+client@0.15.15_better-sqlite3@12.8.0_chokidar@4.0.3_dotenv@17.4_pujmflt2h7w7tg6w5ybefkgrby/node_modules/[4mnitro[24m/dist/runtime/internal/vite/dev-worker.mjs:77:13) {
+[32m[crm][0m   status: [33m503[39m
+[32m[crm][0m }
+[32m[crm][0m [db] Applying 6 migration(s) on SQLite/libsql…
+[32m[crm][0m [db] Applied migration v1 (1 statement)
+[32m[crm][0m [db] Applied migration v2 (1 statement)
+[32m[crm][0m [db] Applied migration v3 (1 statement)
+[32m[crm][0m [db] Applied migration v4 (1 statement)
+[32m[crm][0m [db] Applied migration v5 (1 statement)
+[32m[crm][0m [db] Applied migration v6 (1 statement)
+[32m[crm][0m [db] Applying 6 migration(s) on SQLite/libsql…
+[32m[crm][0m [db] Applied migration v1001 (1 statement)
+[32m[crm][0m [db] Applied migration v1002 (1 statement)
+[32m[crm][0m [db] Applied migration v1003 (1 statement)
+[32m[crm][0m [db] Applied migration v1004 (1 statement)
+[32m[crm][0m [db] Applied migration v1005 (1 statement)
+[32m[crm][0m [db] Applied migration v1006 (1 statement)
+[32m[crm][0m [agent-native] Generated a persistent BETTER_AUTH_SECRET in .env.local. Sessions will now survive dev-server restarts. (Delete .env.local to rotate; set BETTER_AUTH_SECRET in .env to override.)
+[95m[forms][0m Error [NitroViteError]: Vite environment "nitro" is unavailable
+[95m[forms][0m     at httpError (file:///Users/shashanksaxena/Documents/Personal/Code/fluid-system/node_modules/[4m.pnpm[24m/nitro@3.0.260415-beta_@libsql+client@0.15.15_better-sqlite3@12.8.0_chokidar@4.0.3_dotenv@17.4_pujmflt2h7w7tg6w5ybefkgrby/node_modules/[4mnitro[24m/dist/runtime/internal/vite/dev-worker.mjs:208:17)
+[95m[forms][0m     at ViteEnvRunner.fetch (file:///Users/shashanksaxena/Documents/Personal/Code/fluid-system/node_modules/[4m.pnpm[24m/nitro@3.0.260415-beta_@libsql+client@0.15.15_better-sqlite3@12.8.0_chokidar@4.0.3_dotenv@17.4_pujmflt2h7w7tg6w5ybefkgrby/node_modules/[4mnitro[24m/dist/runtime/internal/vite/dev-worker.mjs:77:13) {
+[95m[forms][0m   status: [33m503[39m
+[95m[forms][0m }
+[94m[meetings][0m Error [NitroViteError]: Vite environment "nitro" is unavailable
+[94m[meetings][0m     at httpError (file:///Users/shashanksaxena/Documents/Personal/Code/fluid-system/node_modules/[4m.pnpm[24m/nitro@3.0.260415-beta_@libsql+client@0.15.15_better-sqlite3@12.8.0_chokidar@4.0.3_dotenv@17.4_pujmflt2h7w7tg6w5ybefkgrby/node_modules/[4mnitro[24m/dist/runtime/internal/vite/dev-worker.mjs:208:17)
+[94m[meetings][0m     at ViteEnvRunner.fetch (file:///Users/shashanksaxena/Documents/Personal/Code/fluid-system/node_modules/[4m.pnpm[24m/nitro@3.0.260415-beta_@libsql+client@0.15.15_better-sqlite3@12.8.0_chokidar@4.0.3_dotenv@17.4_pujmflt2h7w7tg6w5ybefkgrby/node_modules/[4mnitro[24m/dist/runtime/internal/vite/dev-worker.mjs:77:13) {
+[94m[meetings][0m   status: [33m503[39m
+[94m[meetings][0m }
+[94m[meetings][0m [db] Applying 6 migration(s) on SQLite/libsql…
+[94m[meetings][0m [db] Applied migration v1 (1 statement)
+[94m[meetings][0m [db] Applied migration v2 (1 statement)
+[94m[meetings][0m [db] Applied migration v3 (1 statement)
+[94m[meetings][0m [db] Applied migration v4 (1 statement)
+[94m[meetings][0m [db] Applied migration v5 (1 statement)
+[94m[meetings][0m [db] Applied migration v6 (1 statement)
+[94m[meetings][0m [db] Applying 6 migration(s) on SQLite/libsql…
+[94m[meetings][0m [db] Applied migration v1001 (1 statement)
+[94m[meetings][0m [db] Applied migration v1002 (1 statement)
+[94m[meetings][0m [db] Applied migration v1003 (1 statement)
+[94m[meetings][0m [db] Applied migration v1004 (1 statement)
+[94m[meetings][0m [db] Applied migration v1005 (1 statement)
+[94m[meetings][0m [db] Applied migration v1006 (1 statement)
+[94m[meetings][0m [agent-native] Generated a persistent BETTER_AUTH_SECRET in .env.local. Sessions will now survive dev-server restarts. (Delete .env.local to rotate; set BETTER_AUTH_SECRET in .env to override.)
+[32m[crm][0m [agent-native] auto dev account skipped: [APIError: Invalid email] {
+[32m[crm][0m   status: [32m'BAD_REQUEST'[39m,
+[32m[crm][0m   body: { message: [32m'Invalid email'[39m, code: [32m'INVALID_EMAIL'[39m },
+[32m[crm][0m   headers: {},
+[32m[crm][0m   statusCode: [33m400[39m
+[32m[crm][0m }
+[32m[crm][0m [agent-native] auto dev account skipped: [APIError: Invalid email] {
+[32m[crm][0m   status: [32m'BAD_REQUEST'[39m,
+[32m[crm][0m   body: { message: [32m'Invalid email'[39m, code: [32m'INVALID_EMAIL'[39m },
+[32m[crm][0m   headers: {},
+[32m[crm][0m   statusCode: [33m400[39m
+[32m[crm][0m }
+[94m[meetings][0m [agent-native] auto dev account skipped: [APIError: Invalid email] {
+[94m[meetings][0m   status: [32m'BAD_REQUEST'[39m,
+[94m[meetings][0m   body: { message: [32m'Invalid email'[39m, code: [32m'INVALID_EMAIL'[39m },
+[94m[meetings][0m   headers: {},
+[94m[meetings][0m   statusCode: [33m400[39m
+[94m[meetings][0m }
+[32m[crm][0m [agent-native] auto dev account skipped: [APIError: Invalid email] {
+[32m[crm][0m   status: [32m'BAD_REQUEST'[39m,
+[32m[crm][0m   body: { message: [32m'Invalid email'[39m, code: [32m'INVALID_EMAIL'[39m },
+[32m[crm][0m   headers: {},
+[32m[crm][0m   statusCode: [33m400[39m
+[32m[crm][0m }
+[94m[meetings][0m [agent-native] auto dev account skipped: [APIError: Invalid email] {
+[94m[meetings][0m   status: [32m'BAD_REQUEST'[39m,
+[94m[meetings][0m   body: { message: [32m'Invalid email'[39m, code: [32m'INVALID_EMAIL'[39m },
+[94m[meetings][0m   headers: {},
+[94m[meetings][0m   statusCode: [33m400[39m
+[94m[meetings][0m }
+[32m[crm][0m [agent-native] auto dev account skipped: [APIError: Invalid email] {
+[32m[crm][0m   status: [32m'BAD_REQUEST'[39m,
+[32m[crm][0m   body: { message: [32m'Invalid email'[39m, code: [32m'INVALID_EMAIL'[39m },
+[32m[crm][0m   headers: {},
+[32m[crm][0m   statusCode: [33m400[39m
+[32m[crm][0m }
