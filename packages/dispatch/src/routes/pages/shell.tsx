@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { IconApps } from "@tabler/icons-react";
-import { AgentSidebar, agentNativePath } from "@agent-native/core/client";
+import {
+  AgentSidebar,
+  DISPATCH_SHELL_SENTINEL_PARAM,
+  agentNativePath,
+} from "@agent-native/core/client";
 import { SuperAppRail, type RegistryApp } from "@/components/SuperAppRail";
 import { ShellContentHost } from "@/components/ShellContentHost";
 import {
@@ -133,7 +137,18 @@ export default function ShellRoute() {
       // Only reflect URL changes from the currently-active iframe. Backgrounded
       // iframes might post on their own (HMR, etc.) and shouldn't move the URL.
       if (appId !== activeAppId) return;
-      pendingRef.current = { appId, path };
+      // Strip the shell sentinel param from the child-reported path so
+      // buildIframeSrc doesn't append a second ?__shell=dispatch on top.
+      let cleanPath = path;
+      try {
+        const u = new URL(path, window.location.origin);
+        u.searchParams.delete(DISPATCH_SHELL_SENTINEL_PARAM);
+        cleanPath =
+          u.pathname + (u.search ? u.search : "") + (u.hash ? u.hash : "");
+      } catch {
+        // malformed path — leave as-is
+      }
+      pendingRef.current = { appId, path: cleanPath };
       if (debounceRef.current !== null) {
         window.clearTimeout(debounceRef.current);
       }

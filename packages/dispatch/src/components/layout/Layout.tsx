@@ -428,17 +428,22 @@ export function Layout({
         </Sheet>
 
         {/*
-         * Always mount AgentSidebar so home composer's sendToAgentChat
-         * fallback can pop it via agent-panel:open.
+         * The shell route (/dispatch/shell) mounts its own AgentSidebar.
+         * Rendering Layout's sidebar there too produces two stacked sidebars.
+         * All other routes get Layout's sidebar so the home composer works.
          */}
-        <AgentSidebar
-          position="right"
-          defaultOpen={false}
-          emptyStateText="Create apps, grant keys, and route work across the workspace."
-          suggestions={SIDEBAR_SUGGESTIONS}
-        >
-          {appContent}
-        </AgentSidebar>
+        {location.pathname.endsWith("/shell") ? (
+          appContent
+        ) : (
+          <AgentSidebar
+            position="right"
+            defaultOpen={false}
+            emptyStateText="Create apps, grant keys, and route work across the workspace."
+            suggestions={SIDEBAR_SUGGESTIONS}
+          >
+            {appContent}
+          </AgentSidebar>
+        )}
       </div>
     </HeaderActionsProvider>
   );

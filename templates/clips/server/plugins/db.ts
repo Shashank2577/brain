@@ -1293,15 +1293,6 @@ async function backfillLegacyClipsTables(): Promise<void> {
 }
 
 export default async (nitroApp: any): Promise<void> => {
-  // Clips data is scoped by organization_id. Default first-time users to an
-  // auto-provisioned personal workspace so they land directly in the library
-  // instead of a blocking "Create your organization" gate — matches the UX
-  // of every other public template. Deployments can still override by
-  // explicitly setting AUTO_CREATE_DEFAULT_ORG=0.
-  if (process.env.AUTO_CREATE_DEFAULT_ORG === undefined) {
-    process.env.AUTO_CREATE_DEFAULT_ORG = "1";
-  }
-
   await migrations(nitroApp);
   await retypeBooleanColumnsOnPostgres();
   await backfillLegacyClipsTables();

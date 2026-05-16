@@ -309,7 +309,7 @@ export default function ConnectionsRoute() {
     isError,
     error,
     refetch,
-  } = useActionQuery("list-integrations-catalog", {});
+  } = useActionQuery("list-integrations-catalog", {}, { retry: false });
   const apps = (catalog as CatalogApp[]) || [];
 
   const services = useMemo<Service[]>(() => {
