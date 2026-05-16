@@ -465,6 +465,19 @@ function startApp(app: TemplateApp): void {
   }
 
   const basePath = `/${app.id}`;
+  // Item A3 wiring (mirrors packages/core/src/cli/workspace-dev.ts): non-dispatch
+  // workers need to know where to POST cross-app capability calls
+  // (callCapability → callViaDispatch). Compute the dispatch worker's local
+  // origin from its reserved port and inject DISPATCH_URL so
+  // `@agent-native/core/server/ctx` can route. Dispatch itself doesn't need it
+  // (it takes the in-process fast path via FLUID_IS_DISPATCH).
+  const dispatchApp = appById.get("dispatch");
+  const isDispatch = app.id === "dispatch";
+  const dispatchUrl =
+    dispatchApp && !isDispatch
+      ? `http://127.0.0.1:${dispatchApp.port}`
+      : undefined;
+
   const child = spawn(
     "pnpm",
     [
@@ -495,6 +508,8 @@ function startApp(app: TemplateApp): void {
         VITE_APP_BASE_PATH: basePath,
         PORT: String(app.port),
         WORKSPACE_GATEWAY_URL: gatewayUrl,
+        ...(isDispatch ? { FLUID_IS_DISPATCH: "1" } : {}),
+        ...(dispatchUrl ? { DISPATCH_URL: dispatchUrl } : {}),
       },
     },
   );
@@ -814,6 +829,27 @@ startBackgroundProcess("core", "pnpm", [
   "tsc",
   "--watch",
   "--preserveWatchOutput",
+]);
+
+// Dispatch needs BOTH tsc and tsc-alias in watch mode — tsc alone writes raw
+// `@/lib` imports into dist (per the package's `dev` script). Without
+// tsc-alias --watch, Layout.js and other files end up unresolvable at
+// runtime and /dispatch returns 500 the moment anyone edits dispatch source.
+startBackgroundProcess("dispatch-tsc", "pnpm", [
+  "--filter",
+  "@agent-native/dispatch",
+  "exec",
+  "tsc",
+  "--watch",
+  "--preserveWatchOutput",
+]);
+startBackgroundProcess("dispatch-alias", "pnpm", [
+  "--filter",
+  "@agent-native/dispatch",
+  "exec",
+  "tsc-alias",
+  "--watch",
+  "--resolve-full-paths",
 ]);
 
 const server = createGateway();

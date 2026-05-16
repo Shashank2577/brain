@@ -45,10 +45,30 @@ interface RouteEnv {
    */
   isDispatch: boolean;
   /**
-   * Lazily-imported `dispatchCapability` for the in-process fast path. Only
-   * present when `isDispatch` is true.
+   * Lazily-imported dispatch module for the in-process fast path. Only
+   * present when `isDispatch` is true. Typed as a minimal interface so core
+   * does not take a compile-time dependency on @agent-native/dispatch/server —
+   * that would create a build cycle (dispatch imports core, core would import
+   * dispatch). The dynamic import at runtime is fine; only the static type
+   * reference was the problem.
    */
-  dispatch?: typeof import("@agent-native/dispatch/server");
+  dispatch?: {
+    getCapabilityRegistry(): DispatchRegistry | null | undefined;
+    dispatchCapability(opts: {
+      registry: DispatchRegistry;
+      fqid: string;
+      input: unknown;
+      user: { id: string; email: string; orgId?: string };
+    }): Promise<
+      | { ok: true; output: unknown }
+      | { ok: false; error: { code: string; message: string } }
+    >;
+  };
+}
+
+/** Minimal registry shape — only the bits ctx.ts needs. */
+interface DispatchRegistry {
+  resolve(fqid: string): unknown;
 }
 
 let cachedEnv: RouteEnv | null = null;
