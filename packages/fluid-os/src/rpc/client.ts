@@ -37,7 +37,7 @@ export function createOsClient(opts: OsClientOpts): OsClient {
         body: JSON.stringify({ capability, input }),
       });
       const body = (await res.json()) as RpcResponse<O>;
-      if (!body.ok) {
+      if (body.ok === false) {
         throw new RpcError(body.error.code, body.error.message);
       }
       return body.output;
