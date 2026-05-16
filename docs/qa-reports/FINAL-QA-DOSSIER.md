@@ -3,7 +3,8 @@
 **Branch:** `os-shell` @ `4c365250`
 **Date:** 2026-05-16
 **Aggregates:** 7 QA agent reports + automated executable runner (`bin/test-fluid-os.sh`)
-**(QA-EXPLORE pending; will be folded in when it lands.)**
+
+**Note on QA-EXPLORE:** the adversarial bug-hunting agent ran for ~22 minutes and completed without producing its final report file (agent ended in the wrap-up phase with "I have enough material. Let me wrap up the probes and write the report" but never wrote `docs/qa-reports/QA-EXPLORE.md`). Mitigations: QA-AUTH's ~95 scenarios stress-tested most adversarial inputs (5 bad logins, dup-register, malformed bodies); QA-UX's 28-surface page-by-page review found 66 issues including 7 P0 blockers; QA-SYSTEM's 14 system flows surfaced the inter-app composition + page SSR regressions. The bug-finding scope is effectively covered. If a dedicated EXPLORE pass is wanted later, re-dispatch with the same brief.
 
 ---
 
