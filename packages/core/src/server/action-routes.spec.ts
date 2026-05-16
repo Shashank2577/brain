@@ -331,6 +331,146 @@ describe("mountActionRoutes", () => {
     expect(result).toEqual({ ok: true });
   });
 
+  // ---------------------------------------------------------------------
+  // Zod / Standard Schema validation errors → JSON 400
+  // ---------------------------------------------------------------------
+
+  it("returns JSON 400 with structured issues when a ZodError is thrown", async () => {
+    const { mountActionRoutes } = await import("./action-routes.js");
+    const mounted: Array<{ path: string; handler: any }> = [];
+    const nitroApp = {
+      use: vi.fn((path: string, handler: any) =>
+        mounted.push({ path, handler }),
+      ),
+    };
+    const zodErr = Object.assign(new Error("Validation failed"), {
+      name: "ZodError",
+      issues: [
+        { path: ["documentId"], message: "Required", code: "invalid_type" },
+        { path: ["content"], message: "Required", code: "invalid_type" },
+      ],
+    });
+    const actions: Record<string, ActionEntry> = {
+      "add-comment": {
+        run: vi.fn(async () => {
+          throw zodErr;
+        }),
+      } as any,
+    };
+
+    mountActionRoutes(nitroApp, actions);
+
+    const event = {
+      _method: "POST",
+      _headers: {},
+      req: { json: async () => ({}) },
+    };
+    const result = await mounted[0].handler(event);
+
+    expect(event._status).toBe(400);
+    expect(result).toMatchObject({
+      error: "validation",
+      issues: [
+        { path: ["documentId"], message: "Required" },
+        { path: ["content"], message: "Required" },
+      ],
+    });
+  });
+
+  it("returns JSON 500 (not HTML) when a non-validation Error escapes", async () => {
+    const { mountActionRoutes } = await import("./action-routes.js");
+    const mounted: Array<{ path: string; handler: any }> = [];
+    const nitroApp = {
+      use: vi.fn((path: string, handler: any) =>
+        mounted.push({ path, handler }),
+      ),
+    };
+    const actions: Record<string, ActionEntry> = {
+      boom: {
+        run: vi.fn(async () => {
+          throw new Error("DATABASE_URL is not set");
+        }),
+      } as any,
+    };
+
+    mountActionRoutes(nitroApp, actions);
+
+    const event = {
+      _method: "POST",
+      _headers: {},
+      req: { json: async () => ({}) },
+    };
+    const result = await mounted[0].handler(event);
+
+    expect(event._status).toBe(500);
+    expect(result).toEqual({ error: "DATABASE_URL is not set" });
+  });
+
+  it("returns JSON 400 for the pre-formatted 'Invalid action parameters' message", async () => {
+    const { mountActionRoutes } = await import("./action-routes.js");
+    const mounted: Array<{ path: string; handler: any }> = [];
+    const nitroApp = {
+      use: vi.fn((path: string, handler: any) =>
+        mounted.push({ path, handler }),
+      ),
+    };
+    const actions: Record<string, ActionEntry> = {
+      "create-thing": {
+        run: vi.fn(async () => {
+          throw new Error(
+            "Invalid action parameters — Missing required parameter: id. Received: {}.",
+          );
+        }),
+      } as any,
+    };
+
+    mountActionRoutes(nitroApp, actions);
+
+    const event = {
+      _method: "POST",
+      _headers: {},
+      req: { json: async () => ({}) },
+    };
+    const result = await mounted[0].handler(event);
+
+    expect(event._status).toBe(400);
+    expect(result).toMatchObject({ error: "validation" });
+    expect(result.message).toMatch(/Missing required parameter: id/);
+  });
+
+  it("catches outer-handler crashes and still returns JSON", async () => {
+    const { mountActionRoutes } = await import("./action-routes.js");
+    const mounted: Array<{ path: string; handler: any }> = [];
+    const nitroApp = {
+      use: vi.fn((path: string, handler: any) =>
+        mounted.push({ path, handler }),
+      ),
+    };
+    const actions: Record<string, ActionEntry> = {
+      ping: {
+        run: vi.fn(async () => ({ ok: true })),
+      } as any,
+    };
+
+    mountActionRoutes(nitroApp, actions, {
+      // Auth resolver throws BEFORE runWithRequestContext is entered —
+      // without the outer try/catch this would bubble to Nitro and render HTML.
+      getOwnerFromEvent: async () => {
+        throw new Error("auth lookup blew up");
+      },
+    });
+
+    const event = {
+      _method: "POST",
+      _headers: {},
+      req: { json: async () => ({}) },
+    };
+    const result = await mounted[0].handler(event);
+
+    expect(event._status).toBe(500);
+    expect(result).toEqual({ error: "auth lookup blew up" });
+  });
+
   it("does not gate non-bridge calls (header absent) on toolCallable", async () => {
     const { mountActionRoutes } = await import("./action-routes.js");
     const mounted: Array<{ path: string; handler: any }> = [];
