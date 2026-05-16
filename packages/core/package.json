@@ -98,7 +98,7 @@
     "src/cli/starter-templates"
   ],
   "scripts": {
-    "build": "tsc && node scripts/finalize-build.mjs",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc && node scripts/finalize-build.mjs",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run src",
