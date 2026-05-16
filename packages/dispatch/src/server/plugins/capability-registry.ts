@@ -1009,6 +1009,11 @@ function buildBrokerHandler(
 export function createCapabilityRegistryPlugin(
   opts: CapabilityRegistryPluginOptions = {},
 ): NitroPluginDef {
+  // Signal to callCapability() (in @agent-native/core/server/ctx) that this
+  // process IS dispatch, so cross-app calls take the in-process fast path
+  // against `getCapabilityRegistry()` instead of HTTP-POSTing back to ourselves.
+  // Set at plugin-factory time (process boot), not per-request — safe.
+  process.env.FLUID_IS_DISPATCH = "1"; // guard:allow-env-mutation — process-boot signal for ctx.callCapability fast path; identical across all requests in this worker
   // Layer template-derived metadata (icon, label, description) underneath any
   // caller-provided overrides so the production path gets correct rail icons
   // out of the box, while tests passing their own `appMetadata` still win.

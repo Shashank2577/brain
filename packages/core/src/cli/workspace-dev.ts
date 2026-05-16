@@ -510,6 +510,17 @@ export async function runWorkspaceDev(
       );
     }
 
+    // Item A3 wiring: non-dispatch workers need to know where to POST
+    // cross-app capability calls (callCapability → callViaDispatch). Compute
+    // the dispatch worker's local origin from its reserved port and inject
+    // DISPATCH_URL so `@agent-native/core/server/ctx` can route. Dispatch
+    // itself doesn't need it (it takes the in-process fast path).
+    const dispatchApp = appById.get("dispatch");
+    const dispatchUrl =
+      dispatchApp && app.id !== "dispatch"
+        ? `http://127.0.0.1:${dispatchApp.port}`
+        : undefined;
+
     const child = spawnProcess("pnpm", childArgs, {
       cwd: root,
       stdio: ["ignore", "pipe", "pipe"],
@@ -525,6 +536,7 @@ export async function runWorkspaceDev(
         VITE_WORKSPACE_GATEWAY_URL: gatewayUrl,
         PORT: String(app.port),
         WORKSPACE_GATEWAY_URL: gatewayUrl,
+        ...(dispatchUrl ? { DISPATCH_URL: dispatchUrl } : {}),
       },
     });
     app.process = child;
