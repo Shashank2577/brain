@@ -117,16 +117,31 @@ function readJson(file: string): any {
 
 function findWorkspaceRoot(startDir = process.cwd()): string | null {
   let dir = path.resolve(startDir);
+  let frameworkDevRoot: string | null = null;
   for (let i = 0; i < 20; i++) {
     const pkg = readJson(path.join(dir, "package.json"));
     if (typeof pkg?.["agent-native"]?.workspaceCore === "string") {
       return dir;
     }
+    // Framework-dev fallback: scaffolder is being invoked from inside the
+    // agent-native monorepo itself (has pnpm-workspace.yaml +
+    // packages/core/ + templates/). Treat that root as the scaffold target
+    // so the Create-app flow works in the dev repo, not just in
+    // end-user-generated workspaces. The workspaceCore marker takes
+    // priority; this is only the fallback.
+    if (
+      !frameworkDevRoot &&
+      fs.existsSync(path.join(dir, "pnpm-workspace.yaml")) &&
+      fs.existsSync(path.join(dir, "packages/core/package.json")) &&
+      fs.existsSync(path.join(dir, "templates"))
+    ) {
+      frameworkDevRoot = dir;
+    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  return null;
+  return frameworkDevRoot;
 }
 
 function titleCase(value: string): string {
