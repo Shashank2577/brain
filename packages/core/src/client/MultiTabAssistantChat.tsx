@@ -1691,6 +1691,24 @@ export function MultiTabAssistantChat({
     }
   }
 
+  // Disambiguate duplicate default labels (e.g. multiple untitled "New chat"
+  // tabs side-by-side). Suffix the 2nd+ occurrence with " 2", " 3", ... so the
+  // user can tell them apart at a glance.
+  {
+    const labelCounts = new Map<string, number>();
+    for (const tab of tabs) {
+      labelCounts.set(tab.label, (labelCounts.get(tab.label) ?? 0) + 1);
+    }
+    const seen = new Map<string, number>();
+    for (const tab of tabs) {
+      if ((labelCounts.get(tab.label) ?? 0) > 1) {
+        const n = (seen.get(tab.label) ?? 0) + 1;
+        seen.set(tab.label, n);
+        if (n > 1) tab.label = `${tab.label} ${n}`;
+      }
+    }
+  }
+
   const headerProps: MultiTabAssistantChatHeaderProps = {
     tabs,
     activeTabId: activeThreadId ?? "",

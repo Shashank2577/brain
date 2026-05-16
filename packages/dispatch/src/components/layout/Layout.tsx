@@ -174,7 +174,7 @@ const OPERATIONS_NAV_ITEMS = [
 const EMPTY_NAV_ITEMS: readonly DispatchNavItem[] = [];
 
 const SIDEBAR_SUGGESTIONS = [
-  "Build a workspace app for X",
+  "Build a workspace app for customer onboarding",
   "Route Slack mentions to my analytics app",
   "Grant my OpenAI key to this app",
 ];
