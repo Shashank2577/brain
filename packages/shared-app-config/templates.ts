@@ -302,7 +302,7 @@ export const TEMPLATES: TemplateMeta[] = [
     devPort: 8103,
     prodUrl: "https://tasks.agent-native.com",
     defaultMode: "prod",
-    hidden: true,
+    core: true,
   },
   {
     name: "notes",
