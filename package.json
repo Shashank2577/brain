@@ -1,5 +1,6 @@
 {
   "name": "agentnative",
+  "displayName": "Agent-Native",
   "private": true,
   "type": "module",
   "repository": {
