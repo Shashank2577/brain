@@ -108,6 +108,7 @@ export const TEMPLATES: TemplateMeta[] = [
     prodUrl: "https://videos.agent-native.com",
     defaultMode: "prod",
     requiredPackages: ["pinpoint"],
+    core: true,
   },
   {
     name: "clips",
