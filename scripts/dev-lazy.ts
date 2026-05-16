@@ -804,6 +804,9 @@ if (shouldKill) {
 console.log("[dev-lazy] Prebuilding @agent-native/core...");
 execSync("pnpm --filter @agent-native/core build", { stdio: "inherit" });
 
+console.log("[dev-lazy] Prebuilding @agent-native/dispatch...");
+execSync("pnpm --filter @agent-native/dispatch build", { stdio: "inherit" });
+
 startBackgroundProcess("core", "pnpm", [
   "--filter",
   "@agent-native/core",
