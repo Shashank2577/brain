@@ -28,6 +28,7 @@
     "./vite": "./dist/vite/index.js",
     "./server": "./dist/server/index.js",
     "./server/ssr-handler": "./dist/server/ssr-handler.js",
+    "./server/template-server": "./dist/server/template-server.js",
     "./server/agent-discovery": "./dist/server/agent-discovery.js",
     "./server/request-context": "./dist/server/request-context.js",
     "./server/design-token-utils": "./dist/server/design-token-utils.js",

@@ -1,5 +1,10 @@
-import { createH3SSRHandler } from "@agent-native/core/server/ssr-handler";
+import { createTemplateServer } from "@agent-native/core/server/template-server";
 
-export default createH3SSRHandler(
-  () => import("virtual:react-router/server-build"),
-);
+// Canonical SSR catch-all. Owned by the framework via createTemplateServer
+// so per-template drift (the bug that left notes/tasks/crm/meetings without
+// this route and produced "NitroViteError: No fetch handler exported from
+// virtual:react-router/server-build") becomes structurally impossible.
+export default createTemplateServer({
+  templateId: "recruiting",
+  getBuild: () => import("virtual:react-router/server-build"),
+});

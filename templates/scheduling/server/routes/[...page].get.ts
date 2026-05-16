@@ -1,19 +1,10 @@
-import { getSession } from "@agent-native/core/server";
-import { runWithRequestContext } from "@agent-native/core/server/request-context";
-import { createH3SSRHandler } from "@agent-native/core/server/ssr-handler";
-import { defineEventHandler } from "h3";
+import { createTemplateServer } from "@agent-native/core/server/template-server";
 
-const ssr = createH3SSRHandler(
-  () => import("virtual:react-router/server-build"),
-);
-
-export default defineEventHandler(async (event) => {
-  const session = await getSession(event).catch(() => null);
-  return runWithRequestContext(
-    {
-      userEmail: session?.email,
-      orgId: session?.orgId,
-    },
-    async () => ssr(event),
-  );
+// Canonical SSR catch-all. Owned by the framework via createTemplateServer
+// so per-template drift (the bug that left notes/tasks/crm/meetings without
+// this route and produced "NitroViteError: No fetch handler exported from
+// virtual:react-router/server-build") becomes structurally impossible.
+export default createTemplateServer({
+  templateId: "scheduling",
+  getBuild: () => import("virtual:react-router/server-build"),
 });

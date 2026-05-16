@@ -191,11 +191,37 @@ async function rewriteMountedResponse(
 }
 
 /**
+ * Normalize whatever shape the React Router server-build module exports
+ * into the `ServerBuild` shape `createRequestHandler` actually consumes.
+ *
+ * INVARIANT: the returned value is always usable by React Router, regardless
+ * of whether the underlying virtual module uses `export default build`,
+ * `export const ...`, or wraps the build via a Vite plugin variant. This is
+ * the "deterministic: same input → same output" guarantee that lets every
+ * template share the same SSR catch-all without per-template shape probing.
+ */
+function normalizeServerBuild(mod: unknown): unknown {
+  if (mod == null) return mod;
+  const m = mod as Record<string, unknown>;
+  // React Router's virtual module variants. Prefer the shape that already
+  // looks like a ServerBuild (has `routes` and `entry`); fall back to the
+  // module's default export; finally fall back to the module itself.
+  if ("routes" in m && "entry" in m) return mod;
+  const def = m.default as Record<string, unknown> | undefined;
+  if (def && "routes" in def && "entry" in def) return def;
+  return mod;
+}
+
+/**
  * Create an h3 catch-all that hands page routes to React Router and
  * returns 404 for framework / asset paths that React Router doesn't own.
  */
 export function createH3SSRHandler(getBuild: () => Promise<unknown> | unknown) {
-  const handler = createRequestHandler(getBuild as any);
+  // Wrap `getBuild` so the resolved module is always normalized to a shape
+  // React Router can consume — the per-call invariant for every template's
+  // SSR route.
+  const normalizedGetBuild = async () => normalizeServerBuild(await getBuild());
+  const handler = createRequestHandler(normalizedGetBuild as any);
   return defineEventHandler(async (event) => {
     const basePath = getAppBasePath();
     const p = stripAppBasePath(event.url.pathname);

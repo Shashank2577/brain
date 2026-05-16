@@ -5,6 +5,6 @@ import { createTemplateServer } from "@agent-native/core/server/template-server"
 // this route and produced "NitroViteError: No fetch handler exported from
 // virtual:react-router/server-build") becomes structurally impossible.
 export default createTemplateServer({
-  templateId: "forms",
+  templateId: "tasks",
   getBuild: () => import("virtual:react-router/server-build"),
 });

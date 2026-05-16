@@ -102,6 +102,27 @@ run_step "unit"        "test"
 run_step "integration" "test:integration"
 run_step "e2e"         "test:e2e"
 
+# Smoke: every template wires SSR via createTemplateServer. Catches the
+# "200-because-of-auth-redirect" trap that hid the notes/tasks/crm/meetings
+# SSR outage in the previous QA pass — this check is static and doesn't
+# depend on a running server or a cookie.
+SSR_SMOKE_LOG="$OUT/smoke-template-ssr.log"
+SSR_SMOKE_START=$(node -e "console.log(Date.now())")
+set +e
+node "$ROOT/scripts/smoke-template-ssr.mjs" >"$SSR_SMOKE_LOG" 2>&1
+SSR_SMOKE_EXIT=$?
+set -e
+SSR_SMOKE_END=$(node -e "console.log(Date.now())")
+SSR_SMOKE_DUR=$((SSR_SMOKE_END - SSR_SMOKE_START))
+if [ "$SSR_SMOKE_EXIT" -eq 0 ]; then
+  echo "[test-fluid-os] step=smoke-template-ssr status=passed duration=${SSR_SMOKE_DUR}ms"
+  record_step "smoke-template-ssr" "passed" "$SSR_SMOKE_DUR" 0 "$SSR_SMOKE_LOG"
+else
+  echo "[test-fluid-os] step=smoke-template-ssr status=failed duration=${SSR_SMOKE_DUR}ms exit=${SSR_SMOKE_EXIT}"
+  record_step "smoke-template-ssr" "failed" "$SSR_SMOKE_DUR" 1 "$SSR_SMOKE_LOG"
+  OVERALL_STATUS=1
+fi
+
 # Materialize the final summary at the documented path.
 node - "$SUMMARY_TMP" "$OUT/summary.json" "$OVERALL_STATUS" <<'NODE'
 import { readFileSync, writeFileSync } from "node:fs";
