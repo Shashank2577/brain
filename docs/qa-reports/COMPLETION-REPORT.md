@@ -127,9 +127,9 @@ Post-rebuild state per template:
 | meetings | 200 | ✅ | New template — working |
 | slides | (timeout on first hit) | unknown | Lazy boot may be slow |
 | mail | (timeout on first hit) | unknown | Lazy boot may be slow |
-| notes | 500 | unknown | NEW template — UI route fails |
-| tasks | 404 | n/a | NEW template — registered `hidden: true`, dev-lazy skips it |
-| crm | (timeout) | unknown | NEW template — lazy boot crash silently |
+| notes | 500 | unknown | NEW template — UI route fails with `No fetch handler exported from virtual:react-router/server-build` (deep React Router SSR issue) |
+| tasks | **200** (API) | **✅ alice recognized** | **FIXED in `67515f68` — flipped to `core: true` so dev-lazy mounts it. SSO + RPC + auth work via API.** |
+| crm | (timeout) | unknown | NEW template — lazy boot crash silently; same SSR class of issue suspected |
 
 **Revised P0 list** (incorporating the F-1 fix):
 
