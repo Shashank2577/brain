@@ -108,6 +108,26 @@ const migrations = runMigrations(
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`,
     },
+    // ---------------------------------------------------------------------
+    // 7. Heal drifted `meetings` tables that pre-date v1's full column set.
+    //    QA hit `no such column: starts_at` because an older deploy of this
+    //    template created `meetings` without these columns and migration
+    //    bookkeeping was already past v1, so CREATE TABLE IF NOT EXISTS was
+    //    a no-op. Idempotent ADD COLUMN IF NOT EXISTS reconciles those
+    //    drifted databases without touching healthy ones. Strictly additive
+    //    — no DROP / RENAME (see AGENTS.md "No breaking database changes").
+    // ---------------------------------------------------------------------
+    {
+      version: 7,
+      sql: `
+        ALTER TABLE meetings ADD COLUMN IF NOT EXISTS starts_at TEXT;
+        ALTER TABLE meetings ADD COLUMN IF NOT EXISTS ends_at TEXT;
+        ALTER TABLE meetings ADD COLUMN IF NOT EXISTS calendar_event_id TEXT;
+        ALTER TABLE meetings ADD COLUMN IF NOT EXISTS prep_notes TEXT NOT NULL DEFAULT '';
+        ALTER TABLE meetings ADD COLUMN IF NOT EXISTS linked_note_id TEXT;
+        ALTER TABLE meetings ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'scheduled';
+      `,
+    },
   ],
   { table: "_meetings_migrations" },
 );
