@@ -303,10 +303,13 @@ function PerAppDetailRow({ app }: { app: CatalogApp }) {
 }
 
 export default function ConnectionsRoute() {
-  const { data: catalog, isLoading } = useActionQuery(
-    "list-integrations-catalog",
-    {},
-  );
+  const {
+    data: catalog,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useActionQuery("list-integrations-catalog", {});
   const apps = (catalog as CatalogApp[]) || [];
 
   const services = useMemo<Service[]>(() => {
@@ -349,7 +352,21 @@ export default function ConnectionsRoute() {
         </div>
       )}
 
-      {!isLoading && services.length === 0 && (
+      {!isLoading && isError && services.length === 0 && (
+        <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
+          <div className="mb-3 text-foreground">
+            Couldn't load the integrations catalog.
+          </div>
+          <div className="mb-4 font-mono text-xs">
+            {(error as Error | null)?.message ?? "Unknown error"}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Try again
+          </Button>
+        </div>
+      )}
+
+      {!isLoading && !isError && services.length === 0 && (
         <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
           No apps with declared integrations are reachable yet.
         </div>
