@@ -74,6 +74,7 @@ export { default as dispatchIntegrationsPlugin } from "./plugins/integrations.js
 export { default as dispatchAgentChatPlugin } from "./plugins/agent-chat.js";
 export { default as dispatchDbPlugin } from "./plugins/db.js";
 export { default as dispatchCoreRoutesPlugin } from "./plugins/core-routes.js";
+export { default as dispatchTestsRunnerPlugin } from "./plugins/tests-runner.js";
 export {
   default as dispatchMobileAuthPlugin,
   buildMobileTokenHandler,

@@ -48,7 +48,7 @@
     "dev:docs": "pnpm --filter @agent-native/docs dev",
     "dev:electron": "node scripts/dev-electron.ts",
     "dev:electron:apps": "node scripts/dev-electron.ts --apps",
-    "test:integration": "echo \"P7-prep placeholder: integration tests will live in tests/integration/ — see docs/delivery/phase-7-tests.md\" && exit 0",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "test:all": "./bin/test-fluid-os.sh"
   },
@@ -57,8 +57,10 @@
     "@cloudflare/vite-plugin": "^1.31.0",
     "@libsql/linux-x64-gnu": "^0.5.29",
     "@playwright/test": "^1.60.0",
+    "better-sqlite3": "^12.8.0",
     "concurrently": "^9.1.0",
     "prettier": "^3.6.2",
+    "vitest": "^4.1.6",
     "wrangler": "^4.80.0"
   },
   "pnpm": {
@@ -81,7 +83,10 @@
     }
   },
   "dependencies": {
+    "@agent-native/core": "workspace:*",
+    "@agent-native/dispatch": "workspace:*",
     "diff-match-patch": "^1.0.5",
+    "drizzle-orm": "^0.45.2",
     "yjs": "^13.6.30"
   }
 }

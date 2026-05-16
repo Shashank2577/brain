@@ -10,11 +10,11 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "tests/e2e",
-  timeout: 60_000,
+  timeout: 180_000,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   reporter: [
     ["list"],
     ["html", { outputFolder: ".test-results/playwright-html", open: "never" }],
@@ -24,6 +24,10 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    // Lazy mode boots templates on demand; first hit can take ~30s while the
+    // child Nitro server warms up. Default 30s navigation timeout is too tight.
+    navigationTimeout: 120_000,
+    actionTimeout: 60_000,
   },
   projects: [
     {

@@ -21,10 +21,44 @@ function runThemeScript(script: string) {
   new Function(script)();
 }
 
+// Vitest 4's `populateGlobal` doesn't include `localStorage` in its KEYS list,
+// so when jsdom is the environment the global `window.localStorage` ends up as
+// a stale plain Object copy without the Storage methods. We install an
+// in-memory shim per-test so the suite is environment-agnostic and keeps the
+// assertions intact.
+function installLocalStorageShim(): void {
+  const data = new Map<string, string>();
+  const storage = {
+    getItem(key: string): string | null {
+      return data.has(key) ? (data.get(key) as string) : null;
+    },
+    setItem(key: string, value: string): void {
+      data.set(key, String(value));
+    },
+    removeItem(key: string): void {
+      data.delete(key);
+    },
+    clear(): void {
+      data.clear();
+    },
+    key(index: number): string | null {
+      return Array.from(data.keys())[index] ?? null;
+    },
+    get length(): number {
+      return data.size;
+    },
+  };
+  vi.stubGlobal("localStorage", storage);
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    get: () => storage,
+  });
+}
+
 describe("getThemeInitScript", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
-    window.localStorage.clear();
+    installLocalStorageShim();
     document.documentElement.classList.remove("light", "dark");
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-appearance");
