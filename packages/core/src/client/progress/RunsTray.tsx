@@ -31,25 +31,37 @@ export function RunsTray({
   const [runs, setRuns] = useState<AgentRunDto[]>([]);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  // Track in-flight request so each poll cancels the previous one before
+  // firing a new fetch. Without this, slow responses (or an auth hang in
+  // resolveOwner) let requests pile up faster than they resolve.
+  const abortRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async () => {
+    // Cancel any still-pending request from the previous poll tick.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await fetch(
         agentNativePath(`/_agent-native/runs?active=true&limit=${limit}`),
+        { signal: controller.signal },
       );
       if (!res.ok) return;
       const rows = (await res.json()) as AgentRunDto[];
       setRuns(rows);
-    } catch {
-      // best-effort
+    } catch (err) {
+      // Ignore intentional aborts; swallow other errors (best-effort).
+      if (err instanceof DOMException && err.name === "AbortError") return;
     }
   }, [limit]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
+  // usePausingInterval already fires callback() once on mount (when the tab is
+  // visible), so no separate useEffect initial call is needed here. A second
+  // immediate call was doubling up requests on every mount.
   usePausingInterval(refresh, pollMs);
+
+  // Abort any in-flight fetch when the component unmounts.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const dismissRun = useCallback(
     async (runId: string) => {
