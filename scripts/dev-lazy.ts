@@ -513,6 +513,20 @@ function startApp(app: TemplateApp): void {
         // the gateway origin (not the template's own port) — required for
         // Google OAuth to accept the redirect_uri in workspace/desktop mode.
         VITE_WORKSPACE_GATEWAY_URL: gatewayUrl,
+        // Use Amazon Bedrock as the default AI engine when AWS credentials
+        // are available. Falls back to ANTHROPIC_API_KEY automatically when
+        // AWS_ACCESS_KEY_ID is not set, so this is safe to always set.
+        ...(process.env.AWS_ACCESS_KEY_ID
+          ? {
+              AGENT_ENGINE: "bedrock",
+              AWS_REGION: process.env.AWS_REGION || "us-east-1",
+              AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+              AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+              ...(process.env.AWS_SESSION_TOKEN
+                ? { AWS_SESSION_TOKEN: process.env.AWS_SESSION_TOKEN }
+                : {}),
+            }
+          : {}),
         ...(isDispatch ? { FLUID_IS_DISPATCH: "1" } : {}),
         ...(dispatchUrl ? { DISPATCH_URL: dispatchUrl } : {}),
       },

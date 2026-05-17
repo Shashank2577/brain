@@ -58,16 +58,20 @@ export const AGENT_MODEL_CONFIG = {
     ],
   },
   bedrock: {
-    /**
-     * Default targets Claude 3.5 Sonnet on Bedrock — broadly available in
-     * us-east-1 without per-account access approval and matches the model
-     * named in the Phase 5 acceptance criteria.
-     */
-    defaultModel: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+    // Claude 4 models on Bedrock — cross-region inference profile IDs.
+    // The us. prefix uses cross-region routing (no per-region approval needed).
+    defaultModel: "us.anthropic.claude-sonnet-4-5",
     supportedModels: [
+      // Claude 4 Sonnet (cross-region)
+      "us.anthropic.claude-sonnet-4-5",
+      // Claude 4 Opus (cross-region)
+      "us.anthropic.claude-opus-4-5",
+      // Claude 3.7 Sonnet (cross-region)
+      "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      // Legacy Claude 3.5 models (still broadly available)
+      "anthropic.claude-3-5-sonnet-20241022-v2:0",
       "anthropic.claude-3-5-sonnet-20240620-v1:0",
       "anthropic.claude-3-haiku-20240307-v1:0",
-      "anthropic.claude-3-sonnet-20240229-v1:0",
       "anthropic.claude-3-opus-20240229-v1:0",
     ],
   },
