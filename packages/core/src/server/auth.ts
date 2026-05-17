@@ -1203,7 +1203,7 @@ function createAuthGuardFn(): (
   };
 }
 
-const AUTO_DEV_ACCOUNT_EMAIL = "dev@local";
+const AUTO_DEV_ACCOUNT_EMAIL = "dev@local.dev";
 const AUTO_DEV_ACCOUNT_PASSWORD = "local-dev-account";
 
 /**

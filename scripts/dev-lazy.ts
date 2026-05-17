@@ -499,6 +499,7 @@ function startApp(app: TemplateApp): void {
         // Children write to a pipe (not a TTY), so vite/pnpm/chalk/picocolors
         // skip colors by default. FORCE_COLOR=1 re-enables them — the parent's
         // stdout is a TTY, so ANSI codes pass straight through to the user.
+        NODE_ENV: "development",
         FORCE_COLOR: "1",
         APP_NAME: app.id,
         AGENT_NATIVE_WORKSPACE: "1",
