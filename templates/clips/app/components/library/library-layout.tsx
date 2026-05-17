@@ -231,11 +231,12 @@ export function LibraryLayout({ children }: LibraryLayoutProps) {
           />
         )}
 
-        {/* Left sidebar */}
+        {/* Left sidebar — hidden when embedded in the dispatch shell */}
         <aside
           className={cn(
             "fixed inset-y-0 left-0 z-50 flex h-full w-[260px] flex-col overflow-hidden border-r border-border bg-sidebar transition-[width,transform] duration-200 ease-out md:static md:z-auto",
             showCollapsedSidebar && "md:w-14",
+            isEmbedded && "hidden md:hidden",
             sidebarOpen
               ? "translate-x-0"
               : "-translate-x-full md:translate-x-0",

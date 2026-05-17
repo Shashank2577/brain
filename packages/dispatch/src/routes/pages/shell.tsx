@@ -178,7 +178,7 @@ export default function ShellRoute() {
         onSelect={handleSelect}
         apps={apps ?? undefined}
       />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 overflow-hidden">
         <AgentSidebar
           position="right"
           defaultOpen={false}
@@ -220,11 +220,14 @@ export default function ShellRoute() {
               </Card>
             </div>
           ) : (
-            <ShellContentHost
-              activeAppId={activeAppId}
-              appPath={appPath}
-              onChildUrlChange={handleChildUrlChange}
-            />
+            <div className="flex h-full w-full flex-1 overflow-hidden">
+              <ShellContentHost
+                activeAppId={activeAppId}
+                appPath={appPath}
+                onChildUrlChange={handleChildUrlChange}
+                className="h-full w-full flex-1"
+              />
+            </div>
           )}
         </AgentSidebar>
       </div>

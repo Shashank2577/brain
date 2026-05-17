@@ -88,9 +88,11 @@ export function Layout({ children }: LayoutProps) {
   return (
     <HeaderActionsProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-        <div className="hidden shrink-0 md:block">
-          <Sidebar />
-        </div>
+        {!isEmbedded && (
+          <div className="hidden shrink-0 md:block">
+            <Sidebar />
+          </div>
+        )}
         {(() => {
           const inner = (
             <div className="flex h-full flex-1 flex-col overflow-hidden">

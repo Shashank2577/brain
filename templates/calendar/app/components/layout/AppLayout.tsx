@@ -258,7 +258,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         onClose={() => setShortcutsHelpOpen(false)}
       />
       <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        {!isEmbedded && (
+          <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        )}
         <ConditionalAgentSidebar
           embedded={isEmbedded}
           position="right"

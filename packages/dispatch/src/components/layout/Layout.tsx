@@ -380,28 +380,6 @@ export function NavContent({
                 </div>
               </div>
             )}
-            {onToggleCollapsed && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={onToggleCollapsed}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    aria-label={
-                      collapsed ? "Expand sidebar" : "Collapse sidebar"
-                    }
-                  >
-                    {collapsed ? (
-                      <IconLayoutSidebarLeftExpand size={14} />
-                    ) : (
-                      <IconLayoutSidebarLeftCollapse size={14} />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  {collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                </TooltipContent>
-              </Tooltip>
-            )}
           </div>
         </div>
 
@@ -446,6 +424,36 @@ export function NavContent({
           {collapsed && (
             <div className="mt-auto shrink-0 border-t px-2 py-2">
               {operationsNavItems.map(renderNavItem)}
+            </div>
+          )}
+
+          {onToggleCollapsed && (
+            <div
+              className={cn(
+                "shrink-0 border-t px-2 py-2",
+                collapsed ? "flex justify-center" : "flex justify-end",
+              )}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={onToggleCollapsed}
+                    className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                    aria-label={
+                      collapsed ? "Expand sidebar" : "Collapse sidebar"
+                    }
+                  >
+                    {collapsed ? (
+                      <IconLayoutSidebarLeftExpand size={16} />
+                    ) : (
+                      <IconLayoutSidebarLeftCollapse size={16} />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                </TooltipContent>
+              </Tooltip>
             </div>
           )}
         </div>

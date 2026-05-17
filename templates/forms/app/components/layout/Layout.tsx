@@ -68,7 +68,7 @@ export function Layout({ children }: LayoutProps) {
   return (
     <HeaderActionsProvider>
       <div className="flex h-screen overflow-hidden">
-        <Sidebar />
+        {!isEmbedded && <Sidebar />}
         {isEmbedded ? (
           inner
         ) : (
