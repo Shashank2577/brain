@@ -360,7 +360,10 @@ const AppWebview = forwardRef<AppWebviewHandle, AppWebviewProps>(
                 "webpreferences",
                 "contextIsolation=true,nodeIntegration=false,sandbox=true,backgroundThrottling=false",
               );
-              wv.setAttribute("partition", `persist:app-${app.id}`);
+              // All webviews share one session so the workspace SSO cookie
+              // (set by dispatch on first login) propagates to every app
+              // automatically — no per-app login required.
+              wv.setAttribute("partition", "persist:workspace");
               wv.setAttribute("src", url);
               container.appendChild(wv);
               webviewRef.current = wv;

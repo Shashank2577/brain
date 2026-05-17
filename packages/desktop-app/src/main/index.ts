@@ -160,7 +160,7 @@ function getInjectionTargetForAppId(
   return {
     appId: appConfig.id,
     origin: getAppOrigin(appConfig),
-    session: session.fromPartition(`persist:app-${appConfig.id}`),
+    session: session.fromPartition("persist:workspace"),
   };
 }
 
@@ -1481,7 +1481,7 @@ app.whenReady().then(() => {
   }
   const sessionToAppId = new Map<Electron.Session, string>();
   for (const appConfig of initialApps) {
-    const sess = session.fromPartition(`persist:app-${appConfig.id}`);
+    const sess = session.fromPartition("persist:workspace");
     sessionToAppId.set(sess, appConfig.id);
     configureWebviewSession(sess, appConfig.id);
   }
