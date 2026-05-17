@@ -1,5 +1,5 @@
 {
-  "name": "Agent Native Content",
+  "name": "Content",
   "short_name": "Content",
   "description": "Notion-like content workspace",
   "start_url": ".",

@@ -326,7 +326,7 @@ function ModeSelector({
   mode,
   onChange,
   planModeDisabled = false,
-  planModeDisabledReason = "Open Agent Native Desktop to use Plan mode.",
+  planModeDisabledReason = "Open Brain Desktop to use Plan mode.",
 }: {
   mode: ExecMode;
   onChange: (mode: ExecMode) => void;

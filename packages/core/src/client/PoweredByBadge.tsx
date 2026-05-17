@@ -40,11 +40,11 @@ const containerStyle = (
 const darkQuery = "(prefers-color-scheme: dark)";
 
 /**
- * Small branding badge: "Built with [Agent Native logo]"
+ * Small branding badge: "Built with [Brain logo]"
  *
  * - Fixed position in the corner
  * - Subtle, semi-transparent
- * - Links to https://agent-native.com
+ * - Links to https://github.com/Shashank2577/agent-native
  * - Respects prefers-color-scheme
  * - Can be hidden via HIDE_BRANDING=true env var (for white-label)
  */
@@ -133,22 +133,22 @@ export function PoweredByBadge({
         }
       `}</style>
       <a
-        href="https://agent-native.com"
+        href="https://github.com/Shashank2577/agent-native"
         target="_blank"
         rel="noopener noreferrer"
         className="an-powered-badge"
         style={containerStyle(position)}
-        aria-label="Built with Agent Native"
+        aria-label="Built with Brain"
       >
         <span>Built with</span>
         <img
           src={logoOnLight}
-          alt="Agent Native"
+          alt="Brain"
           className="an-powered-logo an-powered-logo-light"
         />
         <img
           src={logoOnDark}
-          alt="Agent Native"
+          alt="Brain"
           className="an-powered-logo an-powered-logo-dark"
         />
       </a>

@@ -646,11 +646,11 @@ function AgentPanelInner({
     codeAccess?.unavailableTitle ?? "Open Desktop to edit code";
   const codeUnavailableDescription =
     codeAccess?.unavailableDescription ??
-    "Source-code changes, workspace files, and CLI access are available in the Agent Native Desktop app.";
+    "Source-code changes, workspace files, and CLI access are available in the Brain Desktop app.";
   const codeUnavailableCtaLabel =
     codeAccess?.unavailableCtaLabel ?? "Download Desktop";
   const codeUnavailableCtaHref =
-    codeAccess?.unavailableCtaHref ?? "https://www.agent-native.com/download";
+    codeAccess?.unavailableCtaHref ?? "https://github.com/Shashank2577/agent-native";
   const codeUnavailableSecondaryCtaLabel =
     codeAccess?.unavailableSecondaryCtaLabel ?? "Use Builder";
   const codeUnavailableSecondaryCtaHref =

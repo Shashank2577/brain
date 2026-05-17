@@ -11,10 +11,7 @@ interface AgentNativeIconProps extends Omit<SVGProps<SVGSVGElement>, "fill"> {
 }
 
 /**
- * Monochrome agent-native "A" mark. Source paths are taken from the Tauri
- * menu-bar icon at `packages/core/src/assets/branding/tray-icon.svg`, with the
- * padded tray viewBox cropped for toolbar use and `fill="white"` swapped for
- * `fill="currentColor"` so the icon inherits the surrounding text color.
+ * Brain icon — used as the app logo throughout the UI.
  */
 export function AgentNativeIcon({
   size = 24,
@@ -26,21 +23,21 @@ export function AgentNativeIcon({
       xmlns="http://www.w3.org/2000/svg"
       width={size}
       height={size}
-      viewBox="0 0 114 114"
+      viewBox="0 0 24 24"
       fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
       className={className}
       {...rest}
     >
-      <g transform="translate(0 24)">
-        <path
-          d="M24.5537 65.7695H0L15.0859 39.4619L37.708 0L60.4912 39.4619H39.6396L24.5537 65.7695Z"
-          fill="currentColor"
-        />
-        <path
-          d="M89.446 0H114L76.2921 65.7704H51.7383L89.446 0Z"
-          fill="currentColor"
-        />
-      </g>
+      <path d="M15.5 13a3.5 3.5 0 0 0-3.5 3.5v1a3.5 3.5 0 0 0 7 0v-1.8" />
+      <path d="M8.5 13A3.5 3.5 0 0 1 12 16.5v1a3.5 3.5 0 0 1-7 0v-1.8" />
+      <path d="M17.5 12a2.5 2.5 0 0 0 0-5A4.9 4.9 0 0 0 12 3a4.9 4.9 0 0 0-5.5 4 2.5 2.5 0 0 0 0 5" />
+      <path d="M12 3v9" />
+      <path d="M6.5 12c0-1 .5-2 1.5-2.5" />
+      <path d="M17.5 12c0-1-.5-2-1.5-2.5" />
     </svg>
   );
 }

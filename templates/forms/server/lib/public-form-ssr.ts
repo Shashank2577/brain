@@ -324,9 +324,9 @@ ${form.description ? `<meta name="description" content="${escapeHtml(form.descri
     <p class="desc">${escapeHtml(settings.successMessage || "Thank you! Your response has been recorded.")}</p>
   </div>
 
-  <a href="https://agent-native.com" target="_blank" rel="noopener noreferrer" class="powered-badge">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-    Built with Agent Native
+  <a href="https://github.com/Shashank2577/agent-native" target="_blank" rel="noopener noreferrer" class="powered-badge">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 13a3.5 3.5 0 0 0-3.5 3.5v1a3.5 3.5 0 0 0 7 0v-1.8"/><path d="M8.5 13A3.5 3.5 0 0 1 12 16.5v1a3.5 3.5 0 0 1-7 0v-1.8"/><path d="M17.5 12a2.5 2.5 0 0 0 0-5A4.9 4.9 0 0 0 12 3a4.9 4.9 0 0 0-5.5 4 2.5 2.5 0 0 0 0 5"/><path d="M12 3v9"/></svg>
+    Built with Brain
   </a>
 </div>
 

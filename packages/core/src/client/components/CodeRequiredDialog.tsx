@@ -161,7 +161,7 @@ export function CodeRequiredDialog({
               <IconCode size={24} />
             </div>
             <div style={s.optionText}>
-              <span style={s.optionTitle}>Use Agent Native Desktop</span>
+              <span style={s.optionTitle}>Use Brain Desktop</span>
               <span style={s.optionDesc}>
                 Open the project in the desktop app to enable source edits,
                 Workspace files, and CLI access.
