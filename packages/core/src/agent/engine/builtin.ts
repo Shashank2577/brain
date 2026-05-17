@@ -45,7 +45,7 @@ export function registerBuiltinEngines(): void {
     capabilities: BEDROCK_CAPABILITIES,
     defaultModel: BEDROCK_MODEL_CONFIG.defaultModel,
     supportedModels: BEDROCK_MODEL_CONFIG.supportedModels,
-    requiredEnvVars: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+    requiredEnvVars: ["BEDROCK_ACCESS_KEY_ID", "BEDROCK_SECRET_ACCESS_KEY"],
     create: (config) => createBedrockEngine(config),
   });
 

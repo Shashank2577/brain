@@ -455,9 +455,20 @@ class BedrockEngine implements AgentEngine {
     accessKeyId?: string;
     secretAccessKey?: string;
   }) {
-    this.region = config.region ?? readDeployCredentialEnv("AWS_REGION") ?? "us-east-1";
-    this.accessKeyId = config.accessKeyId ?? readDeployCredentialEnv("AWS_ACCESS_KEY_ID");
-    this.secretAccessKey = config.secretAccessKey ?? readDeployCredentialEnv("AWS_SECRET_ACCESS_KEY");
+    // Read from BEDROCK_* names first (Netlify-safe), fall back to AWS_* (local dev / EC2)
+    this.region =
+      config.region ??
+      readDeployCredentialEnv("BEDROCK_REGION") ??
+      readDeployCredentialEnv("AWS_REGION") ??
+      "us-east-1";
+    this.accessKeyId =
+      config.accessKeyId ??
+      readDeployCredentialEnv("BEDROCK_ACCESS_KEY_ID") ??
+      readDeployCredentialEnv("AWS_ACCESS_KEY_ID");
+    this.secretAccessKey =
+      config.secretAccessKey ??
+      readDeployCredentialEnv("BEDROCK_SECRET_ACCESS_KEY") ??
+      readDeployCredentialEnv("AWS_SECRET_ACCESS_KEY");
   }
 
   async *stream(opts: EngineStreamOptions): AsyncIterable<EngineEvent> {
