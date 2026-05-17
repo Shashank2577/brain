@@ -72,12 +72,13 @@ export function Layout({ children }: LayoutProps) {
   const inner = (
     <>
       <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-          {mobileSidebarOpen && (
-            <div
-              className="fixed inset-0 z-40 bg-black/50 md:hidden"
-              onClick={() => setMobileSidebarOpen(false)}
-            />
-          )}
+        {!isEmbedded && mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
+        {!isEmbedded && (
           <div
             className={cn(
               "fixed inset-y-0 left-0 z-50 md:static md:z-auto",
@@ -88,8 +89,10 @@ export function Layout({ children }: LayoutProps) {
           >
             <Sidebar />
           </div>
-          <div className="flex h-full flex-1 flex-col overflow-hidden">
-            {/* Mobile-only top bar with hamburger */}
+        )}
+        <div className="flex h-full flex-1 flex-col overflow-hidden">
+          {/* Mobile-only top bar with hamburger — hidden when embedded */}
+          {!isEmbedded && (
             <div className="flex items-center h-12 border-b border-border px-4 md:hidden bg-sidebar shrink-0">
               <button
                 onClick={() => setMobileSidebarOpen(true)}
@@ -100,10 +103,11 @@ export function Layout({ children }: LayoutProps) {
               </button>
               <span className="text-base font-bold tracking-tight">Design</span>
             </div>
-            {!hideHeader && <Header />}
-            <main className="flex-1 overflow-y-auto">{children}</main>
-          </div>
+          )}
+          {!hideHeader && <Header />}
+          <main className="flex-1 overflow-y-auto">{children}</main>
         </div>
+      </div>
     </>
   );
 

@@ -101,38 +101,42 @@ export function Layout({ children }: LayoutProps) {
   return (
     <HeaderActionsProvider>
       <div className="flex h-screen overflow-hidden bg-background">
-        {isMobile ? (
-          <>
-            <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-              <SheetContent
-                side="left"
-                showClose={false}
-                className="w-[85vw] max-w-[85vw] sm:max-w-[85vw] p-0"
+        {!isEmbedded &&
+          (isMobile ? (
+            <>
+              <Sheet
+                open={mobileSidebarOpen}
+                onOpenChange={setMobileSidebarOpen}
               >
-                <DocumentSidebar
-                  activeDocumentId={activeDocumentId}
-                  collapsed={false}
-                  onToggleCollapsed={() => setMobileSidebarOpen(false)}
-                  onNavigate={() => setMobileSidebarOpen(false)}
-                />
-              </SheetContent>
-            </Sheet>
-            <button
-              className="fixed top-3 left-3 z-30 flex h-10 w-10 items-center justify-center rounded-lg bg-background border border-border shadow-sm md:hidden cursor-pointer"
-              onClick={() => setMobileSidebarOpen(true)}
-            >
-              <IconMenu2 size={18} />
-            </button>
-          </>
-        ) : (
-          <DocumentSidebar
-            activeDocumentId={activeDocumentId}
-            collapsed={sidebarCollapsed}
-            onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
-            width={sidebarWidth}
-            onResize={handleSidebarResize}
-          />
-        )}
+                <SheetContent
+                  side="left"
+                  showClose={false}
+                  className="w-[85vw] max-w-[85vw] sm:max-w-[85vw] p-0"
+                >
+                  <DocumentSidebar
+                    activeDocumentId={activeDocumentId}
+                    collapsed={false}
+                    onToggleCollapsed={() => setMobileSidebarOpen(false)}
+                    onNavigate={() => setMobileSidebarOpen(false)}
+                  />
+                </SheetContent>
+              </Sheet>
+              <button
+                className="fixed top-3 left-3 z-30 flex h-10 w-10 items-center justify-center rounded-lg bg-background border border-border shadow-sm md:hidden cursor-pointer"
+                onClick={() => setMobileSidebarOpen(true)}
+              >
+                <IconMenu2 size={18} />
+              </button>
+            </>
+          ) : (
+            <DocumentSidebar
+              activeDocumentId={activeDocumentId}
+              collapsed={sidebarCollapsed}
+              onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
+              width={sidebarWidth}
+              onResize={handleSidebarResize}
+            />
+          ))}
         {(() => {
           const inner = (
             <main className="relative flex min-w-0 min-h-0 flex-1 flex-col">

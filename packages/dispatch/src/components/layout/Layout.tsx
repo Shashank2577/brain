@@ -16,6 +16,8 @@ import {
   IconBrandTelegram,
   IconKey,
   IconChevronDown,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
   IconLayersSubtract,
   IconMessages,
   IconPlugConnected,
@@ -33,8 +35,32 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Header } from "./Header";
 import { HeaderActionsProvider } from "./HeaderActions";
+
+const LEFT_NAV_COLLAPSED_KEY = "dispatch:left-nav-collapsed";
+
+function readLeftNavCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(LEFT_NAV_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeLeftNavCollapsed(collapsed: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LEFT_NAV_COLLAPSED_KEY, String(collapsed));
+  } catch {}
+}
 
 export type DispatchNavSection = "primary" | "operations";
 
@@ -248,9 +274,13 @@ function dispatchNavLinkTarget(path: string): string {
 export function NavContent({
   onNavigate,
   extensions,
+  collapsed = false,
+  onToggleCollapsed,
 }: {
   onNavigate?: () => void;
   extensions?: DispatchExtensionConfig;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }) {
   const location = useLocation();
   const { data: workspace } = useActionQuery(
@@ -276,98 +306,151 @@ export function NavContent({
 
   const renderNavItem = (item: DispatchNavItem) => {
     const Icon = item.icon;
-    return (
-      <li key={item.id}>
-        <NavLink
-          to={dispatchNavLinkTarget(item.to)}
-          onClick={onNavigate}
-          className={({ isActive }) => {
-            const active = isActive || navItemMatchesPath(item, localPathname);
-            return cn(
-              "flex h-8 w-full items-center gap-2 rounded-md px-2 text-sm",
-              active
-                ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            );
-          }}
-        >
-          {Icon ? (
-            <Icon size={16} className="shrink-0" />
-          ) : (
-            <span className="h-4 w-4 shrink-0" aria-hidden="true" />
-          )}
-          <span className="truncate">{item.label}</span>
-        </NavLink>
-      </li>
+    const link = (
+      <NavLink
+        to={dispatchNavLinkTarget(item.to)}
+        onClick={onNavigate}
+        className={({ isActive }) => {
+          const active = isActive || navItemMatchesPath(item, localPathname);
+          return cn(
+            "flex h-8 w-full items-center rounded-md text-sm",
+            collapsed ? "justify-center px-0" : "gap-2 px-2",
+            active
+              ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          );
+        }}
+      >
+        {Icon ? (
+          <Icon size={16} className="shrink-0" />
+        ) : (
+          <span className="h-4 w-4 shrink-0" aria-hidden="true" />
+        )}
+        {!collapsed && <span className="truncate">{item.label}</span>}
+      </NavLink>
     );
+
+    if (collapsed) {
+      return (
+        <li key={item.id}>
+          <Tooltip>
+            <TooltipTrigger asChild>{link}</TooltipTrigger>
+            <TooltipContent side="right">{item.label}</TooltipContent>
+          </Tooltip>
+        </li>
+      );
+    }
+
+    return <li key={item.id}>{link}</li>;
   };
 
   return (
-    <>
-      <div className="border-b px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border bg-card text-foreground">
-            <img
-              src={appPath("/agent-native-icon-light.svg")}
-              alt=""
-              aria-hidden="true"
-              className="block h-4 w-auto shrink-0 dark:hidden"
-            />
-            <img
-              src={appPath("/agent-native-icon-dark.svg")}
-              alt=""
-              aria-hidden="true"
-              className="hidden h-4 w-auto shrink-0 dark:block"
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-foreground">
-              {workspaceLabel ?? "Dispatch"}
+    <TooltipProvider>
+      <>
+        <div className={cn("border-b py-3", collapsed ? "px-2" : "px-4")}>
+          <div
+            className={cn(
+              "flex items-center",
+              collapsed ? "justify-center" : "gap-3",
+            )}
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border bg-card text-foreground">
+              <img
+                src={appPath("/agent-native-icon-light.svg")}
+                alt=""
+                aria-hidden="true"
+                className="block h-4 w-auto shrink-0 dark:hidden"
+              />
+              <img
+                src={appPath("/agent-native-icon-dark.svg")}
+                alt=""
+                aria-hidden="true"
+                className="hidden h-4 w-auto shrink-0 dark:block"
+              />
             </div>
-            <div className="truncate text-xs text-muted-foreground">
-              {workspaceLabel
-                ? `Workspace · ${ws?.appCount ?? 0} app${ws?.appCount === 1 ? "" : "s"}`
-                : "Workspace control plane"}
-            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-foreground">
+                  {workspaceLabel ?? "Dispatch"}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {workspaceLabel
+                    ? `Workspace · ${ws?.appCount ?? 0} app${ws?.appCount === 1 ? "" : "s"}`
+                    : "Workspace control plane"}
+                </div>
+              </div>
+            )}
+            {onToggleCollapsed && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={onToggleCollapsed}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    aria-label={
+                      collapsed ? "Expand sidebar" : "Collapse sidebar"
+                    }
+                  >
+                    {collapsed ? (
+                      <IconLayoutSidebarLeftExpand size={14} />
+                    ) : (
+                      <IconLayoutSidebarLeftCollapse size={14} />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
-      </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <nav className="px-2 py-3">
-          <ul className="space-y-0.5">{primaryNavItems.map(renderNavItem)}</ul>
-        </nav>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <nav className="px-2 py-3">
+            <ul className="space-y-0.5">
+              {primaryNavItems.map(renderNavItem)}
+            </ul>
+          </nav>
 
-        <div className="mt-auto shrink-0">
-          <div className="border-t px-2 py-2">
-            <details className="group" open={operationsOpen}>
-              <summary className="flex h-8 cursor-pointer list-none items-center justify-between rounded-md px-2 text-xs font-medium uppercase text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&::-webkit-details-marker]:hidden">
-                <span>Operations</span>
-                <IconChevronDown
-                  size={14}
-                  className="transition-transform group-open:rotate-180"
-                />
-              </summary>
-              <ul className="mt-1 space-y-0.5">
-                {operationsNavItems.map(renderNavItem)}
-              </ul>
-            </details>
-          </div>
+          {!collapsed && (
+            <div className="mt-auto shrink-0">
+              <div className="border-t px-2 py-2">
+                <details className="group" open={operationsOpen}>
+                  <summary className="flex h-8 cursor-pointer list-none items-center justify-between rounded-md px-2 text-xs font-medium uppercase text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&::-webkit-details-marker]:hidden">
+                    <span>Operations</span>
+                    <IconChevronDown
+                      size={14}
+                      className="transition-transform group-open:rotate-180"
+                    />
+                  </summary>
+                  <ul className="mt-1 space-y-0.5">
+                    {operationsNavItems.map(renderNavItem)}
+                  </ul>
+                </details>
+              </div>
 
-          <div className="border-t px-2 py-1">
-            <ExtensionsSidebarSection />
-          </div>
+              <div className="border-t px-2 py-1">
+                <ExtensionsSidebarSection />
+              </div>
 
-          <div className="border-t px-3 py-2">
-            <OrgSwitcher />
-          </div>
+              <div className="border-t px-3 py-2">
+                <OrgSwitcher />
+              </div>
 
-          <div className="border-t px-3 py-2">
-            <FeedbackButton />
-          </div>
+              <div className="border-t px-3 py-2">
+                <FeedbackButton />
+              </div>
+            </div>
+          )}
+
+          {collapsed && (
+            <div className="mt-auto shrink-0 border-t px-2 py-2">
+              {operationsNavItems.map(renderNavItem)}
+            </div>
+          )}
         </div>
-      </div>
-    </>
+      </>
+    </TooltipProvider>
   );
 }
 
@@ -380,6 +463,16 @@ export function Layout({
 }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [leftNavCollapsed, setLeftNavCollapsed] =
+    useState<boolean>(readLeftNavCollapsed);
+
+  function toggleLeftNav() {
+    setLeftNavCollapsed((prev) => {
+      const next = !prev;
+      writeLeftNavCollapsed(next);
+      return next;
+    });
+  }
 
   if (CHROMELESS_PATHS.some((path) => location.pathname === path)) {
     return <>{children}</>;
@@ -405,8 +498,17 @@ export function Layout({
   return (
     <HeaderActionsProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">
-        <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
-          <NavContent extensions={extensions} />
+        <aside
+          className={cn(
+            "hidden lg:flex shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-200",
+            leftNavCollapsed ? "w-14" : "w-64",
+          )}
+        >
+          <NavContent
+            extensions={extensions}
+            collapsed={leftNavCollapsed}
+            onToggleCollapsed={toggleLeftNav}
+          />
         </aside>
 
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
