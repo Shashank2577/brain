@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isInsideDispatchShell } from "@agent-native/core/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -1180,6 +1181,7 @@ function FirstPartyAnalyticsCard() {
 export default function DataSources() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const isEmbedded = isInsideDispatchShell();
 
   const { data: envStatus = [], isLoading: isStatusLoading } = useQuery({
     queryKey: ["env-status"],
@@ -1205,7 +1207,9 @@ export default function DataSources() {
     : null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div
+      className={isEmbedded ? "space-y-8 p-4" : "mx-auto max-w-5xl space-y-8"}
+    >
       <p className="text-sm text-muted-foreground">
         Connect your data sources, then ask the agent to create dashboards.{" "}
         {!isStatusLoading &&

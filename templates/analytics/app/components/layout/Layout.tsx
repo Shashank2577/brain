@@ -96,12 +96,12 @@ export function Layout({ children }: LayoutProps) {
         {(() => {
           const inner = (
             <div className="flex h-full flex-1 flex-col overflow-hidden">
-              <MobileNav />
-              {!isExtensionsRoute && <Header />}
-              <InvitationBanner />
+              {!isEmbedded && <MobileNav />}
+              {!isExtensionsRoute && !isEmbedded && <Header />}
+              {!isEmbedded && <InvitationBanner />}
               <main
                 className={
-                  isExtensionsRoute
+                  isExtensionsRoute || isEmbedded
                     ? "flex-1 overflow-y-auto"
                     : "flex-1 overflow-y-auto p-4 md:p-6 lg:p-8"
                 }
