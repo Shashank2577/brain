@@ -45,5 +45,10 @@ export {
   ANTHROPIC_SUPPORTED_MODELS,
   ANTHROPIC_CAPABILITIES,
 } from "./anthropic-engine.js";
-export { createAISDKEngine, type AISDKProvider } from "./ai-sdk-engine.js";
+export {
+  createAISDKEngine,
+  createBedrockEngine,
+  BEDROCK_CAPABILITIES,
+  type AISDKProvider,
+} from "./ai-sdk-engine.js";
 export { registerBuiltinEngines } from "./builtin.js";

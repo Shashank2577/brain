@@ -358,18 +358,10 @@ export async function resolveEngine(
   }
 
   // 5. Auto-detect from the current user's per-user `app_secrets` rows
-  // (Builder OAuth callback + "paste your own key" settings flow write
-  // here, not env). Comes before env-detection so a user-specific
-  // Builder connection wins over a stale deploy-level/provider key.
+  // ("paste your own key" settings flow writes here, not env).
   const detectedFromUser = await detectEngineFromUserSecrets();
-  if (detectedFromUser?.name === "builder") {
-    return detectedFromUser.create(engineCreateConfig(apiKey));
-  }
 
   // 6. Settings store — only when the stored row's API key is reachable.
-  // This remains below Builder detection so "Builder.io connected" and the
-  // runtime agree on the default managed gateway path. Non-Builder user keys
-  // still honor the stored provider/model when Builder is not connected.
   if (stored && typeof stored.engine === "string") {
     const entry = _registry.get(stored.engine);
     if (entry && (await isStoredEngineUsableForRequest(stored, entry))) {

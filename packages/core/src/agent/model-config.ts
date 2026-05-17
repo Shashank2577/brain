@@ -119,6 +119,25 @@ export const BUILDER_MODEL_CONFIG = AGENT_MODEL_CONFIG.builder;
 export const ANTHROPIC_MODEL_CONFIG = AGENT_MODEL_CONFIG.anthropic;
 export const AI_SDK_MODEL_CONFIG = AGENT_MODEL_CONFIG.aiSdk;
 
+// Bedrock cross-region inference profile IDs.
+// Use the region-prefix variant that matches your AWS_REGION:
+//   us.*  → AWS_REGION=us-east-1 / us-west-2
+//   apac.* → AWS_REGION=ap-south-1 / ap-southeast-1 / ap-northeast-1
+//   eu.*  → AWS_REGION=eu-central-1 / eu-west-1
+// Direct model IDs (no prefix) require on-demand throughput provisioning.
+// Defaults here use apac.* because that matches the configured AWS_REGION.
+export const BEDROCK_MODEL_CONFIG = {
+  defaultModel: "apac.anthropic.claude-sonnet-4-20250514-v1:0",
+  supportedModels: [
+    "apac.anthropic.claude-sonnet-4-20250514-v1:0",
+    "apac.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    "apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "apac.anthropic.claude-3-5-sonnet-20240620-v1:0",
+    "apac.anthropic.claude-3-sonnet-20240229-v1:0",
+    "apac.anthropic.claude-3-haiku-20240307-v1:0",
+  ],
+} as const;
+
 export type AISDKProvider = keyof typeof AI_SDK_MODEL_CONFIG;
 
 export const DEFAULT_MODEL = BUILDER_MODEL_CONFIG.defaultModel;

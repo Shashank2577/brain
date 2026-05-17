@@ -25,7 +25,11 @@ import {
   aiSdkPartToEngineEvents,
   aiSdkStepToAssistantContent,
 } from "./translate-ai-sdk.js";
-import { AI_SDK_MODEL_CONFIG, type AISDKProvider } from "../model-config.js";
+import {
+  AI_SDK_MODEL_CONFIG,
+  BEDROCK_MODEL_CONFIG,
+  type AISDKProvider,
+} from "../model-config.js";
 import { readDeployCredentialEnv } from "../../server/credential-provider.js";
 import { normalizeReasoningEffortForModel } from "../../shared/reasoning-effort.js";
 
@@ -34,6 +38,14 @@ export type { AISDKProvider } from "../model-config.js";
 // ---------------------------------------------------------------------------
 // Provider definitions
 // ---------------------------------------------------------------------------
+
+export const BEDROCK_CAPABILITIES: EngineCapabilities = {
+  thinking: true,
+  promptCaching: false,
+  vision: true,
+  computerUse: false,
+  parallelToolCalls: true,
+};
 
 const PROVIDER_CAPABILITIES: Record<AISDKProvider, EngineCapabilities> = {
   anthropic: {
@@ -421,6 +433,124 @@ function getProviderApiKey(provider: AISDKProvider): string | undefined {
     if (value) return value;
   }
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// BedrockEngine — AWS Bedrock via @ai-sdk/amazon-bedrock
+// ---------------------------------------------------------------------------
+
+class BedrockEngine implements AgentEngine {
+  readonly name = "ai-sdk:bedrock";
+  readonly label = "Claude on AWS Bedrock";
+  readonly defaultModel = BEDROCK_MODEL_CONFIG.defaultModel;
+  readonly supportedModels: readonly string[] = BEDROCK_MODEL_CONFIG.supportedModels;
+  readonly capabilities = BEDROCK_CAPABILITIES;
+
+  private readonly region?: string;
+  private readonly accessKeyId?: string;
+  private readonly secretAccessKey?: string;
+
+  constructor(config: {
+    region?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+  }) {
+    this.region = config.region ?? readDeployCredentialEnv("AWS_REGION") ?? "us-east-1";
+    this.accessKeyId = config.accessKeyId ?? readDeployCredentialEnv("AWS_ACCESS_KEY_ID");
+    this.secretAccessKey = config.secretAccessKey ?? readDeployCredentialEnv("AWS_SECRET_ACCESS_KEY");
+  }
+
+  async *stream(opts: EngineStreamOptions): AsyncIterable<EngineEvent> {
+    let aiModule: any;
+    try {
+      aiModule = await import("ai");
+    } catch {
+      yield {
+        type: "stop",
+        reason: "error",
+        error: 'The "ai" package is not installed. Run: pnpm add ai @ai-sdk/amazon-bedrock',
+      };
+      return;
+    }
+
+    let bedrockModule: any;
+    try {
+      bedrockModule = await import("@ai-sdk/amazon-bedrock");
+    } catch {
+      yield {
+        type: "stop",
+        reason: "error",
+        error: 'The "@ai-sdk/amazon-bedrock" package is not installed. Run: pnpm add @ai-sdk/amazon-bedrock',
+      };
+      return;
+    }
+
+    const { streamText, jsonSchema } = aiModule;
+    const { createAmazonBedrock } = bedrockModule;
+
+    const bedrock = createAmazonBedrock({
+      region: this.region,
+      ...(this.accessKeyId && this.secretAccessKey
+        ? {
+            accessKeyId: this.accessKeyId,
+            secretAccessKey: this.secretAccessKey,
+          }
+        : {}),
+    });
+
+    const providerModel = bedrock(opts.model);
+    const aiSdkTools =
+      opts.tools.length > 0 ? engineToolsToAISDK(opts.tools, jsonSchema) : undefined;
+    const messages = engineMessagesToAISDK(opts.messages);
+
+    let assistantContent: EngineContentPart[] = [];
+
+    try {
+      const result = streamText({
+        model: providerModel,
+        system: opts.systemPrompt,
+        messages,
+        tools: aiSdkTools,
+        maxOutputTokens: opts.maxOutputTokens ?? 32768,
+        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+        abortSignal: opts.abortSignal,
+        onStepFinish: (step: any) => {
+          assistantContent = aiSdkStepToAssistantContent(step);
+        },
+      });
+
+      let bufferedStop: EngineEvent | undefined;
+      for await (const part of result.fullStream) {
+        for (const event of aiSdkPartToEngineEvents(part)) {
+          if (event.type === "stop") {
+            bufferedStop = event;
+          } else {
+            yield event;
+          }
+        }
+      }
+
+      yield { type: "assistant-content", parts: assistantContent };
+      yield bufferedStop ?? { type: "stop", reason: "end_turn" };
+    } catch (err: any) {
+      yield {
+        type: "stop",
+        reason: "error",
+        error: err?.message ?? String(err),
+      };
+      throw err;
+    }
+  }
+}
+
+export function createBedrockEngine(
+  config: Record<string, unknown> = {},
+): AgentEngine {
+  return new BedrockEngine(config as {
+    region?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+  });
 }
 
 // ---------------------------------------------------------------------------

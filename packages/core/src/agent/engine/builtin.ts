@@ -1,5 +1,5 @@
 /**
- * Registers built-in agent engines (anthropic, ai-sdk:*) into the global registry.
+ * Registers built-in agent engines (anthropic, ai-sdk:*, bedrock) into the global registry.
  *
  * This module is imported once at server startup via the agent-chat plugin.
  * Additional engines can be registered by calling registerAgentEngine() from
@@ -15,6 +15,8 @@ import {
 } from "./anthropic-engine.js";
 import {
   createAISDKEngine,
+  createBedrockEngine,
+  BEDROCK_CAPABILITIES,
   PROVIDER_CAPABILITIES,
   PROVIDER_DEFAULT_MODELS,
   PROVIDER_SUPPORTED_MODELS,
@@ -22,12 +24,7 @@ import {
   PROVIDER_PACKAGES,
   type AISDKProvider,
 } from "./ai-sdk-engine.js";
-import {
-  createBuilderEngine,
-  BUILDER_CAPABILITIES,
-  BUILDER_DEFAULT_MODEL,
-  BUILDER_SUPPORTED_MODELS,
-} from "./builder-engine.js";
+import { BEDROCK_MODEL_CONFIG } from "../model-config.js";
 
 let _registered = false;
 
@@ -38,21 +35,18 @@ export function registerBuiltinEngines(): void {
   if (_registered) return;
   _registered = true;
 
-  // ── Builder.io managed gateway ─────────────────────────────────────────────
-  // Registered first so detectEngineFromEnv picks it when both Builder keys
-  // are set — Builder is the managed path we want everyone on long-term.
-  // Users who prefer BYO keys can opt out via AGENT_ENGINE_PREFER_BYO_KEY=true,
-  // which drops Builder to the fallback slot in detectEngineFromEnv.
+  // ── AWS Bedrock (Claude via Bedrock) ───────────────────────────────────────
+  // Registered first so it wins when AWS credentials are present in env.
   registerAgentEngine({
-    name: "builder",
-    label: "Builder.io Gateway",
+    name: "ai-sdk:bedrock",
+    label: "Claude on AWS Bedrock",
     description:
-      "Managed LLM access via Builder.io — Claude, GPT, Gemini, and more through a single connection.",
-    capabilities: BUILDER_CAPABILITIES,
-    defaultModel: BUILDER_DEFAULT_MODEL,
-    supportedModels: BUILDER_SUPPORTED_MODELS,
-    requiredEnvVars: ["BUILDER_PRIVATE_KEY", "BUILDER_PUBLIC_KEY"],
-    create: (config) => createBuilderEngine(config),
+      "Anthropic Claude models served via AWS Bedrock. Requires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION.",
+    capabilities: BEDROCK_CAPABILITIES,
+    defaultModel: BEDROCK_MODEL_CONFIG.defaultModel,
+    supportedModels: BEDROCK_MODEL_CONFIG.supportedModels,
+    requiredEnvVars: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+    create: (config) => createBedrockEngine(config),
   });
 
   // ── Anthropic ──────────────────────────────────────────────────────────────

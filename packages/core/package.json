@@ -156,6 +156,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
+    "@ai-sdk/amazon-bedrock": ">=4",
     "@ai-sdk/anthropic": ">=3",
     "@ai-sdk/cohere": ">=3",
     "@ai-sdk/google": ">=3",
@@ -187,6 +188,9 @@
   },
   "peerDependenciesMeta": {
     "ai": {
+      "optional": true
+    },
+    "@ai-sdk/amazon-bedrock": {
       "optional": true
     },
     "@ai-sdk/anthropic": {
@@ -263,6 +267,7 @@
     }
   },
   "devDependencies": {
+    "@ai-sdk/amazon-bedrock": "^4.0.107",
     "@ai-sdk/anthropic": "^3.0.71",
     "@ai-sdk/google": "^3.0.64",
     "@ai-sdk/groq": "^3.0.35",
