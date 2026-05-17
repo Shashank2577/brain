@@ -509,6 +509,10 @@ function startApp(app: TemplateApp): void {
         VITE_APP_BASE_PATH: basePath,
         PORT: String(app.port),
         WORKSPACE_GATEWAY_URL: gatewayUrl,
+        // Client-side env so oauthRedirectUri() builds redirect URIs using
+        // the gateway origin (not the template's own port) — required for
+        // Google OAuth to accept the redirect_uri in workspace/desktop mode.
+        VITE_WORKSPACE_GATEWAY_URL: gatewayUrl,
         ...(isDispatch ? { FLUID_IS_DISPATCH: "1" } : {}),
         ...(dispatchUrl ? { DISPATCH_URL: dispatchUrl } : {}),
       },
