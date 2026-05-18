@@ -1,0 +1,1 @@
+{"version":3,"file":"auth-plugin.d.ts","sourceRoot":"","sources":["../../src/server/auth-plugin.ts"],"names":[],"mappings":"AAMA,OAAO,KAAK,EAAE,WAAW,EAAE,MAAM,WAAW,CAAC;AAE7C,KAAK,cAAc,GAAG,CAAC,QAAQ,EAAE,GAAG,KAAK,IAAI,GAAG,OAAO,CAAC,IAAI,CAAC,CAAC;AAE9D,wBAAgB,gBAAgB,CAAC,OAAO,CAAC,EAAE,WAAW,GAAG,cAAc,CAOtE;AAED;;;;GAIG;AACH,eAAO,MAAM,iBAAiB,EAAE,cAE/B,CAAC"}

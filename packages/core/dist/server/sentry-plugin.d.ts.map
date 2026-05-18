@@ -1,0 +1,1 @@
+{"version":3,"file":"sentry-plugin.d.ts","sourceRoot":"","sources":["../../src/server/sentry-plugin.ts"],"names":[],"mappings":"AAmCA,KAAK,cAAc,GAAG,CAAC,QAAQ,EAAE,GAAG,KAAK,IAAI,GAAG,OAAO,CAAC,IAAI,CAAC,CAAC;AAqC9D,wBAAgB,kBAAkB,IAAI,cAAc,CAwDnD;AAED;;;;;GAKG;AACH,eAAO,MAAM,mBAAmB,EAAE,cAAqC,CAAC"}

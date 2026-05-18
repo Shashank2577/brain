@@ -1,0 +1,1 @@
+{"version":3,"file":"response-text.d.ts","sourceRoot":"","sources":["../../src/a2a/response-text.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,cAAc,EAAE,MAAM,mBAAmB,CAAC;AAExD,MAAM,WAAW,+BAA+B;IAC9C,qBAAqB,CAAC,EAAE,OAAO,CAAC;CACjC;AAED,wBAAgB,uCAAuC,CACrD,MAAM,EAAE,SAAS,cAAc,EAAE,EACjC,OAAO,GAAE,+BAAoC,GAC5C,MAAM,CAsBR"}

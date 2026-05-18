@@ -1,0 +1,1 @@
+{"version":3,"file":"ThumbsFeedback.d.ts","sourceRoot":"","sources":["../../../src/client/observability/ThumbsFeedback.tsx"],"names":[],"mappings":"AAeA,MAAM,WAAW,mBAAmB;IAClC,QAAQ,EAAE,MAAM,CAAC;IACjB,KAAK,EAAE,MAAM,CAAC;IACd,UAAU,EAAE,MAAM,CAAC;IACnB,SAAS,CAAC,EAAE,MAAM,CAAC;CACpB;AAID,wBAAgB,cAAc,CAAC,EAC7B,QAAQ,EACR,KAAK,EACL,UAAU,EACV,SAAS,GACV,EAAE,mBAAmB,2CAiIrB"}

@@ -1,0 +1,1 @@
+{"version":3,"file":"agent-env.d.ts","sourceRoot":"","sources":["../../src/shared/agent-env.ts"],"names":[],"mappings":"AAAA;;;;;;;GAOG;AAEH,MAAM,WAAW,MAAM;IACrB,GAAG,EAAE,MAAM,CAAC;IACZ,KAAK,EAAE,MAAM,CAAC;CACf;AAOD;;;GAGG;AACH,iBAAS,OAAO,CAAC,IAAI,EAAE,MAAM,EAAE,GAAG,IAAI,CAiBrC;AAED,eAAO,MAAM,QAAQ;IACnB,6DAA6D;;CAE9D,CAAC"}

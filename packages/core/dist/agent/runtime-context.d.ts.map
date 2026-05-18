@@ -1,0 +1,1 @@
+{"version":3,"file":"runtime-context.d.ts","sourceRoot":"","sources":["../../src/agent/runtime-context.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,qBAAqB;IACpC,GAAG,CAAC,EAAE,IAAI,CAAC;IACX,QAAQ,CAAC,EAAE,MAAM,GAAG,IAAI,CAAC;CAC1B;AAsCD,wBAAgB,yBAAyB,CACvC,OAAO,GAAE,qBAA0B,GAClC,MAAM,CAiBR"}

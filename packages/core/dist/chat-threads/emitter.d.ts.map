@@ -1,0 +1,1 @@
+{"version":3,"file":"emitter.d.ts","sourceRoot":"","sources":["../../src/chat-threads/emitter.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,MAAM,QAAQ,CAAC;AAEtC,MAAM,WAAW,eAAe;IAC9B,MAAM,EAAE,cAAc,CAAC;IACvB,IAAI,EAAE,QAAQ,CAAC;IACf,GAAG,EAAE,MAAM,CAAC;CACb;AAID,wBAAgB,qBAAqB,IAAI,YAAY,CAEpD;AAED,wBAAgB,oBAAoB,CAAC,QAAQ,EAAE,MAAM,GAAG,IAAI,CAO3D"}

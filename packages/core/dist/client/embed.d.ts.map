@@ -1,0 +1,1 @@
+{"version":3,"file":"embed.d.ts","sourceRoot":"","sources":["../../src/client/embed.ts"],"names":[],"mappings":"AAAA;;;;;;;;;GASG;AAEH,eAAO,MAAM,2BAA2B,0BAA0B,CAAC;AAEnE,MAAM,WAAW,oBAAoB;IACnC,IAAI,EAAE,OAAO,2BAA2B,CAAC;IACzC,IAAI,EAAE,MAAM,CAAC;CACd;AAWD;;;;;GAKG;AACH,wBAAgB,YAAY,CAAC,IAAI,EAAE,MAAM,GAAG,IAAI,CAY/C;AAED;;;GAGG;AACH,wBAAgB,cAAc,IAAI,OAAO,CAExC"}

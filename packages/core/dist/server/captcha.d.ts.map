@@ -1,0 +1,1 @@
+{"version":3,"file":"captcha.d.ts","sourceRoot":"","sources":["../../src/server/captcha.ts"],"names":[],"mappings":"AAIA,MAAM,WAAW,mBAAmB;IAClC,OAAO,EAAE,OAAO,CAAC;IACjB,UAAU,CAAC,EAAE,MAAM,EAAE,CAAC;CACvB;AAKD;;;;;GAKG;AACH,wBAAsB,aAAa,CACjC,KAAK,EAAE,MAAM,EACb,SAAS,CAAC,EAAE,MAAM,GACjB,OAAO,CAAC,mBAAmB,CAAC,CAyC9B"}

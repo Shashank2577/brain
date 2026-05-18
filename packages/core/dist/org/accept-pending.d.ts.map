@@ -1,0 +1,1 @@
+{"version":3,"file":"accept-pending.d.ts","sourceRoot":"","sources":["../../src/org/accept-pending.ts"],"names":[],"mappings":"AAOA,MAAM,WAAW,mBAAmB;IAClC,QAAQ,EAAE,KAAK,CAAC;QAAE,YAAY,EAAE,MAAM,CAAC;QAAC,KAAK,EAAE,MAAM,CAAA;KAAE,CAAC,CAAC;IACzD,WAAW,EAAE,MAAM,GAAG,IAAI,CAAC;CAC5B;AAED;;;;;;;;;;;;GAYG;AACH,wBAAsB,gCAAgC,CACpD,QAAQ,EAAE,MAAM,GACf,OAAO,CAAC,mBAAmB,CAAC,CA8D9B"}

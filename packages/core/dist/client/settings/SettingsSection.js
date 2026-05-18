@@ -1,0 +1,10 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { IconChevronDown, IconCheck } from "@tabler/icons-react";
+/**
+ * Collapsible settings section card with icon, title, status dot, and optional badge.
+ * Controlled via `open` / `onToggle` for accordion behaviour.
+ */
+export function SettingsSection({ id, icon, title, subtitle, badge, required, connected, open = false, onToggle, children, }) {
+    return (_jsxs("div", { id: id, className: "rounded-lg border border-border bg-background/50", children: [_jsxs("button", { type: "button", onClick: onToggle, className: "flex w-full cursor-pointer items-center justify-between px-3 py-2.5 text-left rounded-lg hover:bg-accent/40 transition-colors", children: [_jsxs("div", { className: "flex items-center gap-2 min-w-0", children: [_jsx("span", { className: "shrink-0 text-muted-foreground", children: icon }), _jsx("span", { className: "text-[12px] font-medium text-foreground truncate", children: title }), connected && (_jsx("span", { className: "flex items-center justify-center shrink-0 rounded-full bg-green-500/15 text-green-500 w-4 h-4", children: _jsx(IconCheck, { size: 10, stroke: 3 }) })), required && !connected && (_jsx("span", { className: "shrink-0 rounded-full bg-accent/60 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground", children: "Required" })), badge && (_jsx("span", { className: "shrink-0 rounded-full bg-accent/60 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground", children: badge }))] }), _jsx(IconChevronDown, { size: 12, className: `shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}` })] }), open && (_jsxs("div", { className: "border-t border-border px-3 pb-3 pt-2.5", children: [subtitle && (_jsx("p", { className: "text-[10px] text-muted-foreground mb-2.5", children: subtitle })), children] }))] }));
+}
+//# sourceMappingURL=SettingsSection.js.map

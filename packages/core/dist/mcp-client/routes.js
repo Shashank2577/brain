@@ -1,0 +1,388 @@
+/**
+ * HTTP routes for user- and org-scope remote MCP server management.
+ *
+ * Mounted under `/_agent-native/mcp/servers` by `agent-chat-plugin` —
+ * requires a reference to the running `McpClientManager` so mutations can
+ * hot-reload the configured server set.
+ *
+ *   GET    /_agent-native/mcp/servers           list user + org servers
+ *   POST   /_agent-native/mcp/servers           add a server
+ *   DELETE /_agent-native/mcp/servers/:id       remove a server (scope via ?scope=)
+ *   POST   /_agent-native/mcp/servers/:id/test  dry-run connect (no persist)
+ *   POST   /_agent-native/mcp/servers/test      dry-run a URL before persisting
+ */
+import { defineEventHandler, getMethod, getQuery, setResponseHeader, setResponseStatus, } from "h3";
+import { getH3App } from "../server/framework-request-handler.js";
+import { readBody } from "../server/h3-helpers.js";
+import { getOrgContext } from "../org/context.js";
+import { getSession } from "../server/auth.js";
+import { getAllSettings } from "../settings/store.js";
+import { loadMcpConfig, autoDetectMcpConfig } from "./config.js";
+import { formatMcpConnectError } from "./errors.js";
+import { addRemoteServer, listRemoteServers, mergedConfigKey, removeRemoteServer, toHttpServerConfigAsync, validateRemoteUrl, } from "./remote-store.js";
+import { fetchHubServers } from "./hub-client.js";
+export { formatMcpConnectError } from "./errors.js";
+/** Redact obvious auth header values before sending to the client. */
+function redactHeaders(headers) {
+    if (!headers)
+        return undefined;
+    const out = {};
+    for (const k of Object.keys(headers))
+        out[k] = { set: true };
+    return out;
+}
+function projectForClient(stored, scope, ownerId, status) {
+    return {
+        id: stored.id,
+        scope,
+        name: stored.name,
+        url: stored.url,
+        headers: redactHeaders(stored.headers),
+        description: stored.description,
+        createdAt: stored.createdAt,
+        mergedId: mergedConfigKey(scope, stored, ownerId),
+        status,
+    };
+}
+function statusFor(manager, mergedId) {
+    const snap = manager.getStatus();
+    if (snap.connectedServers.includes(mergedId)) {
+        const toolCount = snap.tools.filter((t) => t.source === mergedId).length;
+        return { state: "connected", toolCount };
+    }
+    if (snap.errors[mergedId]) {
+        return { state: "error", error: snap.errors[mergedId] };
+    }
+    if (snap.configuredServers.includes(mergedId)) {
+        return { state: "unknown" };
+    }
+    return { state: "unknown" };
+}
+/**
+ * Build the merged MCP config the manager should run with: file/env config
+ * plus **every** user-scope and org-scope remote server persisted in the
+ * settings store. Scanning all scopes means a mutation from one user's
+ * session never drops another user's servers from the running manager.
+ *
+ * Each persisted server's merged key includes its owner discriminator
+ * (`user_<emailhash>_<name>` or `org_<orgId>_<name>`) so two users' servers
+ * with the same name coexist; the request-time gate in
+ * `isMcpToolAllowedForRequest` then scopes tool visibility back down to the
+ * calling user.
+ */
+export async function buildMergedConfig() {
+    const base = loadMcpConfig() ?? autoDetectMcpConfig();
+    const servers = { ...(base?.servers ?? {}) };
+    const all = await getAllSettings().catch(() => ({}));
+    for (const [fullKey, value] of Object.entries(all)) {
+        const userMatch = /^u:([^:]+):mcp-servers-remote$/.exec(fullKey);
+        const orgMatch = /^o:([^:]+):mcp-servers-remote$/.exec(fullKey);
+        let scope = null;
+        let ownerId = null;
+        if (userMatch) {
+            scope = "user";
+            ownerId = userMatch[1];
+        }
+        else if (orgMatch) {
+            scope = "org";
+            ownerId = orgMatch[1];
+        }
+        if (!scope || !ownerId)
+            continue;
+        const list = value.servers;
+        if (!Array.isArray(list))
+            continue;
+        for (const stored of list) {
+            if (!stored || typeof stored.url !== "string" || !stored.name)
+                continue;
+            // Async resolve: decrypts `headerSecretKey` from app_secrets so the
+            // running MCP client gets the cleartext bearer at request time.
+            // Stored row contains only the secret-key reference, never the value.
+            servers[mergedConfigKey(scope, stored, ownerId)] =
+                await toHttpServerConfigAsync(scope, ownerId, stored);
+        }
+    }
+    // Hub-consume: if this app is configured to consume from a remote hub
+    // (AGENT_NATIVE_MCP_HUB_URL + AGENT_NATIVE_MCP_HUB_TOKEN), pull its
+    // org-scope servers and merge. Hub entries use `hub_<orgId>_<name>` so
+    // they never collide with local `org_<orgId>_<name>` rows.
+    try {
+        const hubServers = await fetchHubServers();
+        for (const [mergedKey, cfg] of Object.entries(hubServers)) {
+            servers[mergedKey] = cfg;
+        }
+    }
+    catch (err) {
+        console.warn(`[mcp-client] hub merge failed: ${err?.message ?? err}. Continuing with local config.`);
+    }
+    if (Object.keys(servers).length === 0)
+        return null;
+    return { servers, source: base?.source ?? "merged" };
+}
+async function resolveContextForRequest(event) {
+    let email = null;
+    try {
+        const session = await getSession(event);
+        email = session?.email ?? null;
+    }
+    catch {
+        email = null;
+    }
+    let orgId = null;
+    let role = null;
+    try {
+        const ctx = await getOrgContext(event);
+        orgId = ctx.orgId;
+        role = ctx.role;
+        if (!email)
+            email = ctx.email;
+    }
+    catch {
+        // ignore — no org context
+    }
+    // No silent `local@localhost` fallback — if `getSession` returns nothing in
+    // production (misconfigured deploy, expired token), the caller must reject
+    // rather than silently pool every unauthenticated request under one identity.
+    return { email, orgId, role };
+}
+async function reconfigureManager(manager) {
+    const merged = await buildMergedConfig();
+    await manager.reconfigure(merged);
+}
+export function mountMcpServersRoutes(nitroApp, manager) {
+    const mountedApps = (globalThis.__agentNativeMcpServersMountedApps ??= new WeakSet());
+    if (mountedApps.has(nitroApp))
+        return;
+    mountedApps.add(nitroApp);
+    try {
+        getH3App(nitroApp).use("/_agent-native/mcp/servers", defineEventHandler(async (event) => {
+            const method = getMethod(event);
+            const pathname = (event.url?.pathname || "")
+                .replace(/^\/+/, "")
+                .replace(/\/+$/, "");
+            const parts = pathname ? pathname.split("/") : [];
+            setResponseHeader(event, "Content-Type", "application/json");
+            // POST /servers/test — dry-run a URL+headers before persisting
+            if (method === "POST" && parts.length === 1 && parts[0] === "test") {
+                return handleTestUrl(event);
+            }
+            // Collection root
+            if (parts.length === 0) {
+                if (method === "GET")
+                    return handleList(event, manager);
+                if (method === "POST")
+                    return handleAdd(event, manager);
+                setResponseStatus(event, 405);
+                return { error: "Method not allowed" };
+            }
+            // /:id  /  /:id/test
+            if (parts.length === 1 || parts.length === 2) {
+                const id = parts[0];
+                if (parts.length === 2 && parts[1] === "test" && method === "POST") {
+                    return handleTestExisting(event, manager, id);
+                }
+                if (parts.length === 1 && method === "DELETE") {
+                    return handleDelete(event, manager, id);
+                }
+            }
+            setResponseStatus(event, 404);
+            return { error: "Not found" };
+        }));
+    }
+    catch (err) {
+        console.warn(`[mcp-client] Failed to mount /_agent-native/mcp/servers: ${err?.message ?? err}`);
+    }
+}
+async function handleList(event, manager) {
+    const { email, orgId, role } = await resolveContextForRequest(event);
+    const userServers = email ? await listRemoteServers("user", email) : [];
+    const orgServers = orgId ? await listRemoteServers("org", orgId) : [];
+    return {
+        user: userServers.map((s) => projectForClient(s, "user", email ?? "", statusFor(manager, mergedConfigKey("user", s, email ?? "")))),
+        org: orgServers.map((s) => projectForClient(s, "org", orgId ?? "", statusFor(manager, mergedConfigKey("org", s, orgId ?? "")))),
+        orgId,
+        role,
+    };
+}
+async function handleAdd(event, manager) {
+    const body = (await readBody(event).catch(() => ({})));
+    const scope = body.scope === "org" ? "org" : body.scope === "user" ? "user" : null;
+    if (!scope) {
+        setResponseStatus(event, 400);
+        return { error: 'scope must be "user" or "org"' };
+    }
+    const name = typeof body.name === "string" ? body.name : "";
+    const url = typeof body.url === "string" ? body.url : "";
+    if (!name.trim() || !url.trim()) {
+        setResponseStatus(event, 400);
+        return { error: "name and url are required" };
+    }
+    const headers = normalizeHeaders(body.headers);
+    const description = typeof body.description === "string" ? body.description : undefined;
+    const { email, orgId, role } = await resolveContextForRequest(event);
+    let scopeId = null;
+    if (scope === "user") {
+        scopeId = email;
+    }
+    else {
+        if (!orgId) {
+            setResponseStatus(event, 400);
+            return {
+                error: "You must belong to an organization to add an org-scope server",
+            };
+        }
+        if (role !== "owner" && role !== "admin") {
+            setResponseStatus(event, 403);
+            return { error: "Only owners and admins can add org-scope MCP servers" };
+        }
+        scopeId = orgId;
+    }
+    if (!scopeId) {
+        setResponseStatus(event, 401);
+        return { error: "Authentication required" };
+    }
+    const result = await addRemoteServer(scope, scopeId, {
+        name,
+        url,
+        headers,
+        description,
+    });
+    if (result.ok !== true) {
+        setResponseStatus(event, 400);
+        return { error: result.error };
+    }
+    await reconfigureManager(manager);
+    const mergedId = mergedConfigKey(scope, result.server, scopeId);
+    return {
+        ok: true,
+        server: projectForClient(result.server, scope, scopeId, statusFor(manager, mergedId)),
+    };
+}
+async function handleDelete(event, manager, id) {
+    const scope = getQuery(event).scope;
+    const parsedScope = scope === "org" ? "org" : scope === "user" ? "user" : null;
+    if (!parsedScope) {
+        setResponseStatus(event, 400);
+        return { error: 'scope query param must be "user" or "org"' };
+    }
+    const { email, orgId, role } = await resolveContextForRequest(event);
+    let scopeId = null;
+    if (parsedScope === "user") {
+        scopeId = email;
+    }
+    else {
+        if (!orgId) {
+            setResponseStatus(event, 400);
+            return { error: "No active organization" };
+        }
+        if (role !== "owner" && role !== "admin") {
+            setResponseStatus(event, 403);
+            return {
+                error: "Only owners and admins can remove org-scope MCP servers",
+            };
+        }
+        scopeId = orgId;
+    }
+    if (!scopeId) {
+        setResponseStatus(event, 401);
+        return { error: "Authentication required" };
+    }
+    const removed = await removeRemoteServer(parsedScope, scopeId, id);
+    if (!removed) {
+        setResponseStatus(event, 404);
+        return { error: "Server not found" };
+    }
+    await reconfigureManager(manager);
+    return { ok: true };
+}
+async function handleTestUrl(event) {
+    const body = (await readBody(event).catch(() => ({})));
+    const url = typeof body.url === "string" ? body.url : "";
+    const check = validateRemoteUrl(url);
+    if (!check.ok) {
+        setResponseStatus(event, 400);
+        return { ok: false, error: check.error };
+    }
+    const headers = normalizeHeaders(body.headers);
+    const result = await tryConnect(check.url.toString(), headers);
+    if (result.ok !== true) {
+        setResponseStatus(event, 400);
+        return { ok: false, error: result.error };
+    }
+    return { ok: true, toolCount: result.toolCount, tools: result.tools };
+}
+async function handleTestExisting(event, manager, id) {
+    const scope = getQuery(event).scope;
+    const parsedScope = scope === "org" ? "org" : scope === "user" ? "user" : null;
+    if (!parsedScope) {
+        setResponseStatus(event, 400);
+        return { error: 'scope query param must be "user" or "org"' };
+    }
+    const { email, orgId } = await resolveContextForRequest(event);
+    const scopeId = parsedScope === "user" ? email : orgId;
+    if (!scopeId) {
+        setResponseStatus(event, 401);
+        return { error: "Authentication required" };
+    }
+    const list = await listRemoteServers(parsedScope, scopeId);
+    const server = list.find((s) => s.id === id);
+    if (!server) {
+        setResponseStatus(event, 404);
+        return { error: "Server not found" };
+    }
+    const result = await tryConnect(server.url, server.headers);
+    if (result.ok !== true) {
+        setResponseStatus(event, 400);
+        return { ok: false, error: result.error };
+    }
+    return { ok: true, toolCount: result.toolCount, tools: result.tools };
+}
+async function tryConnect(url, headers) {
+    try {
+        const [{ Client }, { StreamableHTTPClientTransport }] = await Promise.all([
+            import("@modelcontextprotocol/sdk/client/index.js"),
+            import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
+        ]);
+        const requestInit = {};
+        if (headers && Object.keys(headers).length > 0) {
+            requestInit.headers = headers;
+        }
+        const transport = new StreamableHTTPClientTransport(new URL(url), {
+            requestInit,
+        });
+        const client = new Client({ name: "agent-native-mcp-client-test", version: "1.0.0" }, { capabilities: {} });
+        try {
+            await client.connect(transport);
+            const listed = await client.listTools();
+            const names = (listed?.tools ?? []).map((t) => t.name);
+            return { ok: true, toolCount: names.length, tools: names };
+        }
+        finally {
+            try {
+                await client.close();
+            }
+            catch { }
+            try {
+                await transport.close();
+            }
+            catch { }
+        }
+    }
+    catch (err) {
+        return { ok: false, error: formatMcpConnectError(err) };
+    }
+}
+function normalizeHeaders(input) {
+    if (!input || typeof input !== "object")
+        return undefined;
+    const out = {};
+    for (const [k, v] of Object.entries(input)) {
+        if (typeof k !== "string" || !k.trim())
+            continue;
+        if (typeof v !== "string")
+            continue;
+        out[k.trim()] = v;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+}
+//# sourceMappingURL=routes.js.map

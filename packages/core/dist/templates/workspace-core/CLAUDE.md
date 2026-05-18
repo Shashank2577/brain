@@ -1,0 +1,1 @@
+/Users/shashanksaxena/Documents/Personal/Code/agent-native-default/agent-native/packages/core/src/templates/workspace-core/AGENTS.md

@@ -1,0 +1,1 @@
+{"version":3,"file":"default-model.js","sourceRoot":"","sources":["../../src/agent/default-model.ts"],"names":[],"mappings":"AAAA,OAAO,EACL,aAAa,EACb,oBAAoB,EACpB,uBAAuB,GACxB,MAAM,mBAAmB,CAAC","sourcesContent":["export {\n  DEFAULT_MODEL,\n  DEFAULT_OPENAI_MODEL,\n  DEFAULT_ANTHROPIC_MODEL,\n} from \"./model-config.js\";\n"]}

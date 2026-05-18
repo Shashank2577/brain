@@ -1,0 +1,88 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { agentNativePath } from "../api-path.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IconLoader2, IconCheck, IconX, IconClock } from "@tabler/icons-react";
+import { usePausingInterval } from "../use-pausing-interval.js";
+/**
+ * Header-bar progress indicator. Shows a spinner icon with a count badge
+ * when runs are active; opens a dropdown with live progress bars for each.
+ * Same inline-header pattern as <NotificationsBell /> — drop it into the
+ * header, no floating overlay over the main content.
+ */
+export function RunsTray({ pollMs = 3000, limit = 5, hideWhenIdle = true, className, }) {
+    const [runs, setRuns] = useState([]);
+    const [open, setOpen] = useState(false);
+    const menuRef = useRef(null);
+    const refresh = useCallback(async () => {
+        try {
+            const res = await fetch(agentNativePath(`/_agent-native/runs?active=true&limit=${limit}`));
+            if (!res.ok)
+                return;
+            const rows = (await res.json());
+            setRuns(rows);
+        }
+        catch {
+            // best-effort
+        }
+    }, [limit]);
+    useEffect(() => {
+        refresh();
+    }, [refresh]);
+    usePausingInterval(refresh, pollMs);
+    const dismissRun = useCallback(async (runId) => {
+        setRuns((current) => current.filter((run) => run.id !== runId));
+        try {
+            const res = await fetch(agentNativePath(`/_agent-native/runs/${runId}`), {
+                method: "DELETE",
+                headers: { "X-Agent-Native-CSRF": "1" },
+            });
+            if (!res.ok)
+                throw new Error(`Dismiss failed (${res.status})`);
+        }
+        catch {
+            refresh();
+        }
+    }, [refresh]);
+    useEffect(() => {
+        if (!open)
+            return;
+        const onDocClick = (e) => {
+            if (menuRef.current && !menuRef.current.contains(e.target)) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", onDocClick);
+        return () => document.removeEventListener("mousedown", onDocClick);
+    }, [open]);
+    // Close the dropdown when the last active run finishes.
+    useEffect(() => {
+        if (runs.length === 0 && open)
+            setOpen(false);
+    }, [runs.length, open]);
+    const hasRuns = runs.length > 0;
+    if (!hasRuns && hideWhenIdle)
+        return null;
+    return (_jsxs("div", { ref: menuRef, className: "an-runs-tray relative inline-flex" + (className ? ` ${className}` : ""), children: [_jsxs("button", { type: "button", "aria-label": hasRuns
+                    ? `${runs.length} active run${runs.length > 1 ? "s" : ""}`
+                    : "No active runs", "aria-expanded": open, onClick: () => setOpen((v) => !v), className: "an-runs-tray__trigger relative inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/40 hover:text-foreground", children: [_jsx(IconLoader2, { size: 18, className: hasRuns ? "animate-spin text-primary" : "", "aria-hidden": true }), hasRuns ? (_jsx("span", { "aria-hidden": true, className: "an-runs-tray__badge absolute -right-0.5 -top-0.5 rounded-full bg-primary px-1 text-[10px] leading-[14px] font-medium text-primary-foreground", children: runs.length > 9 ? "9+" : runs.length })) : null] }), open && hasRuns ? (_jsxs("div", { role: "menu", className: "an-runs-tray__menu absolute right-0 top-full z-50 mt-2 w-80 rounded-md border border-border bg-popover text-popover-foreground shadow-lg", children: [_jsxs("div", { className: "border-b border-border px-3 py-2 text-sm font-medium", children: [runs.length, " active run", runs.length > 1 ? "s" : ""] }), _jsx("div", { className: "max-h-96 divide-y divide-border overflow-y-auto", children: runs.map((r) => (_jsx(RunRow, { run: r, onDismiss: dismissRun }, r.id))) })] })) : null] }));
+}
+function RunRow({ run, onDismiss, }) {
+    return (_jsxs("div", { className: "flex flex-col gap-1 px-3 py-2 text-sm", children: [_jsxs("div", { className: "flex items-center justify-between gap-2", children: [_jsx("span", { className: "truncate font-medium text-foreground", children: run.title }), _jsxs("div", { className: "flex shrink-0 items-center gap-1", children: [_jsx(StatusGlyph, { status: run.status }), _jsx("button", { type: "button", "aria-label": `Dismiss ${run.title}`, className: "inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent/60 hover:text-foreground", onClick: () => onDismiss(run.id), children: _jsx(IconX, { size: 13, "aria-hidden": true }) })] })] }), run.step ? (_jsx("span", { className: "truncate text-xs text-muted-foreground", children: run.step })) : null, run.percent != null ? (_jsx("div", { className: "mt-0.5 h-1 w-full overflow-hidden rounded bg-muted", children: _jsx("div", { className: "h-full bg-primary transition-all", style: { width: `${run.percent}%` } }) })) : (_jsx("div", { className: "mt-0.5 h-1 w-full overflow-hidden rounded bg-muted", children: _jsx("div", { className: "h-full w-1/3 animate-pulse bg-primary/60" }) }))] }));
+}
+// dark: variants only where there's no semantic token for the colour
+// (e.g. success green isn't in shadcn's default palette).
+const STATUS_GLYPHS = {
+    running: { Icon: IconLoader2, className: "text-primary" },
+    succeeded: {
+        Icon: IconCheck,
+        className: "text-green-600 dark:text-green-400",
+    },
+    failed: { Icon: IconX, className: "text-destructive" },
+    cancelled: { Icon: IconClock, className: "text-muted-foreground" },
+};
+function StatusGlyph({ status }) {
+    const { Icon, className } = STATUS_GLYPHS[status];
+    const spinClass = status === "running" ? " animate-spin" : "";
+    return _jsx(Icon, { size: 14, className: `${className}${spinClass}`, "aria-hidden": true });
+}
+//# sourceMappingURL=RunsTray.js.map

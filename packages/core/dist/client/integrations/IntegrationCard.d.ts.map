@@ -1,0 +1,1 @@
+{"version":3,"file":"IntegrationCard.d.ts","sourceRoot":"","sources":["../../../src/client/integrations/IntegrationCard.tsx"],"names":[],"mappings":"AAWA,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,2BAA2B,CAAC;AA+BnE,wBAAgB,eAAe,CAAC,EAC9B,MAAM,EACN,SAAS,GACV,EAAE;IACD,MAAM,EAAE,iBAAiB,CAAC;IAC1B,SAAS,EAAE,MAAM,IAAI,CAAC;CACvB,2CAmIA"}

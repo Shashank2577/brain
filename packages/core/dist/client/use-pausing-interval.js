@@ -1,0 +1,52 @@
+import { useEffect } from "react";
+/**
+ * Runs `callback` on an interval, pausing when the tab becomes hidden and
+ * resuming (with an immediate re-run) when the tab becomes visible again.
+ * Fires `callback` once immediately on mount (if the tab is visible).
+ *
+ * Pass `pollMs=0` to disable. Pass `pauseWhenHidden=false` to keep the
+ * interval running even when the tab is hidden — the bell's browser-
+ * notification popup loop uses that to still reach backgrounded tabs.
+ */
+export function usePausingInterval(callback, pollMs, pauseWhenHidden = true) {
+    useEffect(() => {
+        if (pollMs <= 0)
+            return;
+        let id = null;
+        const isHidden = () => typeof document !== "undefined" && document.hidden;
+        const start = () => {
+            if (id == null)
+                id = setInterval(callback, pollMs);
+        };
+        const stop = () => {
+            if (id != null) {
+                clearInterval(id);
+                id = null;
+            }
+        };
+        if (!pauseWhenHidden) {
+            callback();
+            start();
+            return () => stop();
+        }
+        const onVisibility = () => {
+            if (document.hidden) {
+                stop();
+            }
+            else {
+                callback();
+                start();
+            }
+        };
+        if (!isHidden()) {
+            callback();
+            start();
+        }
+        document.addEventListener("visibilitychange", onVisibility);
+        return () => {
+            stop();
+            document.removeEventListener("visibilitychange", onVisibility);
+        };
+    }, [callback, pollMs, pauseWhenHidden]);
+}
+//# sourceMappingURL=use-pausing-interval.js.map

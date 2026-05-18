@@ -1,0 +1,1 @@
+{"version":3,"file":"read-file.d.ts","sourceRoot":"","sources":["../../../src/scripts/dev/read-file.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,sBAAsB,CAAC;AAKvD,eAAO,MAAM,IAAI,EAAE,UAqBlB,CAAC;AAEF,wBAAsB,GAAG,CAAC,IAAI,EAAE,MAAM,CAAC,MAAM,EAAE,MAAM,CAAC,GAAG,OAAO,CAAC,MAAM,CAAC,CAoCvE;AAED,wBAA8B,IAAI,CAAC,IAAI,EAAE,MAAM,EAAE,GAAG,OAAO,CAAC,IAAI,CAAC,CAOhE"}

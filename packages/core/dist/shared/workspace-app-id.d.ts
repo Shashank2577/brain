@@ -1,0 +1,6 @@
+export declare const DISPATCH_WORKSPACE_ROOT_REDIRECTS: readonly [readonly ["overview", "overview"], readonly ["login", "login"], readonly ["signup", "signup"], readonly ["apps", "apps"], readonly ["apps/new-app", "new-app"], readonly ["new-app", "new-app"], readonly ["vault", "vault"], readonly ["integrations", "integrations"], readonly ["agents", "agents"], readonly ["workspace", "workspace"], readonly ["messaging", "messaging"], readonly ["extensions", "extensions"], readonly ["destinations", "destinations"], readonly ["identities", "identities"], readonly ["approval", "approval"], readonly ["approvals", "approvals"], readonly ["audit", "audit"], readonly ["team", "team"]];
+export declare const RESERVED_WORKSPACE_APP_IDS: Set<string>;
+export declare function isValidWorkspaceAppIdFormat(appId: string): boolean;
+export declare function getWorkspaceAppIdValidationError(appId: string): string | null;
+export declare function assertValidWorkspaceAppId(appId: string): void;
+//# sourceMappingURL=workspace-app-id.d.ts.map

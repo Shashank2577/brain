@@ -1,0 +1,1 @@
+{"version":3,"file":"agent-identity.d.ts","sourceRoot":"","sources":["../../src/collab/agent-identity.ts"],"names":[],"mappings":"AAAA;;;;;GAKG;AAEH,eAAO,MAAM,eAAe,aAAa,CAAC;AAE1C,MAAM,WAAW,aAAa;IAC5B,QAAQ,EAAE,MAAM,CAAC;IACjB,IAAI,EAAE,MAAM,CAAC;IACb,KAAK,EAAE,MAAM,CAAC;IACd,KAAK,EAAE,MAAM,CAAC;CACf;AAED,eAAO,MAAM,sBAAsB,EAAE,aAKpC,CAAC"}

@@ -1,0 +1,1 @@
+{"version":3,"file":"a2a-continuation-marker.js","sourceRoot":"","sources":["../../src/integrations/a2a-continuation-marker.ts"],"names":[],"mappings":"AAAA,MAAM,CAAC,MAAM,8BAA8B,GACzC,wCAAwC,CAAC","sourcesContent":["export const A2A_CONTINUATION_QUEUED_MARKER =\n  \"[agent-native:a2a-continuation-queued]\";\n"]}

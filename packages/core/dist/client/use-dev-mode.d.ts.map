@@ -1,0 +1,1 @@
+{"version":3,"file":"use-dev-mode.d.ts","sourceRoot":"","sources":["../../src/client/use-dev-mode.ts"],"names":[],"mappings":"AAmDA;;;GAGG;AACH,wBAAgB,UAAU,CACxB,OAAO,SAA+C,GACrD;IACD,SAAS,EAAE,OAAO,CAAC;IACnB,SAAS,EAAE,OAAO,CAAC;IACnB,SAAS,EAAE,OAAO,CAAC;IACnB,UAAU,EAAE,CAAC,OAAO,EAAE,OAAO,KAAK,OAAO,CAAC,IAAI,CAAC,CAAC;CACjD,CAiDA"}

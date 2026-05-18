@@ -1,0 +1,48 @@
+const FRAMEWORK_ROUTE_PREFIX = "/_agent-native";
+function normalizeBasePath(value) {
+    if (!value || value === "/")
+        return "";
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === "/")
+        return "";
+    return `/${trimmed.replace(/^\/+/, "").replace(/\/+$/, "")}`;
+}
+function configuredBasePath() {
+    const env = import.meta.env;
+    const value = env?.VITE_APP_BASE_PATH ?? env?.APP_BASE_PATH ?? env?.BASE_URL;
+    return typeof value === "string" ? normalizeBasePath(value) : "";
+}
+function pathDerivedBasePath() {
+    if (typeof window === "undefined")
+        return "";
+    const pathname = window.location.pathname;
+    const markerIndex = pathname.indexOf(FRAMEWORK_ROUTE_PREFIX);
+    if (markerIndex <= 0)
+        return "";
+    return normalizeBasePath(pathname.slice(0, markerIndex));
+}
+export function appBasePath() {
+    return configuredBasePath() || pathDerivedBasePath();
+}
+export function appPath(path) {
+    if (!path.startsWith("/"))
+        return path;
+    const basePath = appBasePath();
+    if (!basePath)
+        return path;
+    if (path === basePath || path.startsWith(`${basePath}/`))
+        return path;
+    return `${basePath}${path}`;
+}
+export function appApiPath(path) {
+    const normalized = path === "/api" || path.startsWith("/api/")
+        ? path
+        : `/api/${path.replace(/^\/+/, "")}`;
+    return appPath(normalized);
+}
+export function agentNativePath(path) {
+    if (!path.startsWith(FRAMEWORK_ROUTE_PREFIX))
+        return path;
+    return appPath(path);
+}
+//# sourceMappingURL=api-path.js.map

@@ -1,0 +1,1 @@
+{"version":3,"file":"index.js","sourceRoot":"","sources":["../../../src/client/terminal/index.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AAEH,OAAO,EAAE,aAAa,EAA2B,MAAM,oBAAoB,CAAC","sourcesContent":["/**\n * Terminal — client-side exports\n *\n * Embeddable agent CLI terminal component.\n */\n\nexport { AgentTerminal, type AgentTerminalProps } from \"./AgentTerminal.js\";\n"]}
