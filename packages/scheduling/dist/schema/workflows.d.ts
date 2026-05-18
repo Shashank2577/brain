@@ -1309,7 +1309,7 @@ export declare const workflowShares: import("drizzle-orm/sqlite-core").SQLiteTab
             tableName: string;
             dataType: "string";
             columnType: "SQLiteText";
-            data: "viewer" | "editor" | "admin";
+            data: "admin" | "viewer" | "editor";
             driverParam: string;
             notNull: true;
             hasDefault: true;

@@ -51,6 +51,9 @@ export interface ActionEntry {
     run: (args: Record<string, string>, context?: ActionRunContext) => Promise<any>;
     /** HTTP exposure config. `false` = agent-only. Omitted = auto-inferred from name. */
     http?: import("../action.js").ActionHttpConfig | false;
+    /** Explicit opt-in metadata for public agent protocols. Public routes never
+     *  imply public tool exposure; MCP/A2A/OpenAPI surfaces must filter for this. */
+    publicAgent?: import("../action.js").PublicAgentActionConfig;
     /** If true, completion does NOT trigger a screen-refresh poll event.
      *  Set automatically by `defineAction` when `http.method === "GET"`. */
     readOnly?: boolean;
@@ -65,11 +68,15 @@ export interface ActionEntry {
      *  See `defineAction` (`packages/core/src/action.ts`) and audit H5 in
      *  `security-audit/05-tools-sandbox.md`. */
     toolCallable?: boolean;
+    /** Optional deep-link builder. When set, MCP/A2A surfaces append an
+     *  "Open in <app> →" link built from the call's args + result. Pure, sync,
+     *  best-effort. See `defineAction` and the `external-agents` skill. */
+    link?: import("../action.js").ActionLinkBuilder;
 }
 /** @deprecated Use `ActionEntry` instead */
 export type ScriptEntry = ActionEntry;
 export type AgentExecutionMode = "act" | "plan";
-export declare const PLAN_MODE_SYSTEM_PROMPT = "## Plan Mode Active\n\nYou are in Plan mode. This turn is for research, clarification, and a proposed approach only.\n\nHard rules:\n- Use only read-only tools. Do not edit files, write resources, run shell commands, mutate SQL rows, navigate the UI, send notifications, create jobs, create tools, call external agents, or change external systems.\n- If a needed detail is unclear, ask a concise clarifying question before proposing a plan.\n- When ready, present a concrete plan with the files/tools you expect to touch, the intended changes, validation steps, and notable risks.\n- Do not treat approval as implicit while Plan mode is still active. Tell the user to switch to Act mode with the mode selector or /act before implementation.";
+export declare const PLAN_MODE_SYSTEM_PROMPT = "## Plan Mode Active\n\nYou are in Plan mode. This turn is for research, clarification, and a proposed approach only.\n\nHard rules:\n- Use only read-only tools. Do not edit files, write resources, run mutating bash commands, mutate SQL rows, navigate the UI, send notifications, create jobs, create tools, call external agents, or change external systems.\n- If a needed detail is unclear, ask a concise clarifying question before proposing a plan.\n- When ready, present a concrete plan with the files/tools you expect to touch, the intended changes, validation steps, and notable risks.\n- Do not treat approval as implicit while Plan mode is still active. Tell the user to switch to Act mode with the mode selector or /act before implementation.";
 export declare function isPlanModeToolCallAllowed(name: string, input: unknown, entry: ActionEntry): boolean;
 export declare function createPlanModeActionRegistry(actions: Record<string, ActionEntry>): Record<string, ActionEntry>;
 export interface ProductionAgentOptions {
@@ -88,6 +95,8 @@ export interface ProductionAgentOptions {
     };
     /** Model to use. Defaults to the resolved engine's default model. */
     model?: string;
+    /** App/template id used for org-scoped per-app model defaults. */
+    appId?: string;
     /** Default reasoning effort for requests that do not supply an override. */
     reasoningEffort?: ReasoningEffort;
     /** Provider-specific options passed through to the engine */

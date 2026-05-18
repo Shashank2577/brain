@@ -33,7 +33,7 @@ export default function ApprovalsRoute() {
         onError: (err) => toast.error(String(err)),
     });
     return (_jsx(DispatchShell, { title: "Approvals", description: "Review durable dispatch changes before they apply.", children: _jsxs("div", { className: "grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]", children: [_jsxs("section", { className: "rounded-2xl border bg-card p-5", children: [_jsx("h2", { className: "text-lg font-semibold text-foreground", children: "Approval policy" }), _jsxs("div", { className: "mt-4 space-y-4", children: [_jsxs("label", { className: "flex items-center justify-between rounded-xl border px-4 py-3", children: [_jsxs("div", { children: [_jsx("div", { className: "text-sm font-medium text-foreground", children: "Require approval for durable changes" }), _jsx("div", { className: "mt-1 text-xs text-muted-foreground", children: hasOrg
-                                                        ? "Applies to saved destinations and dispatch settings today."
+                                                        ? "Applies to saved destinations, shared dream proposals, All-app workspace resources, and dispatch settings."
                                                         : "Requires a team workspace. Set one up on the Team page." })] }), _jsx(Switch, { checked: settings?.enabled || false, disabled: !hasOrg || savePolicy.isPending, onCheckedChange: (checked) => savePolicy.mutate({
                                                 enabled: checked,
                                                 approverEmails: settings?.approverEmails || approverList,

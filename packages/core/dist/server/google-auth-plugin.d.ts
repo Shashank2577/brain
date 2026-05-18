@@ -5,8 +5,9 @@ export interface GoogleAuthPluginOptions {
     publicPaths?: string[];
     /**
      * Google sign-in flow: `'popup'`, `'redirect'`, or `'auto'` (default).
-     * Falls back to `GOOGLE_AUTH_MODE` env var, then `'auto'`. The Builder.io
-     * browser iframe always uses popup regardless (Google blocks framing).
+     * Falls back to `GOOGLE_AUTH_MODE` env var, then `'auto'`. Builder
+     * iframes use popup; top-level Builder preview/editor surfaces use
+     * redirect.
      */
     googleAuthMode?: GoogleAuthMode;
 }

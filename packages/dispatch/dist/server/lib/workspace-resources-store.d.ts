@@ -1,3 +1,4 @@
+import { type EffectiveResourceLayer, type ResourceInheritanceScope, type ResourceMeta } from "@agent-native/core/resources/store";
 /**
  * Caller-supplied access context for workspace-resource operations.
  * Same shape and semantics as VaultCtx — looking up a row by id alone is
@@ -28,6 +29,70 @@ export interface WorkspaceResourceOption {
     scope: WorkspaceResourceScope;
     updatedAt: number;
 }
+export interface WorkspaceResourceForApp extends WorkspaceResourceOption {
+    source: "workspace" | "grant";
+    autoLoaded: boolean;
+    grantId: string | null;
+}
+export type WorkspaceResourceAvailability = "all-apps" | "selected-granted" | "selected-not-granted" | "selected-no-app" | "path-not-managed";
+export interface WorkspaceResourceEffectiveLayer extends Omit<EffectiveResourceLayer, "scope"> {
+    scope: ResourceInheritanceScope;
+    resource: ResourceMeta | null;
+}
+export interface WorkspaceResourceEffectiveContext {
+    appId: string | null;
+    userEmail: string;
+    path: string;
+    workspaceResource: WorkspaceResourceOption | null;
+    availability: WorkspaceResourceAvailability;
+    availableToApp: boolean;
+    activeGrantId: string | null;
+    effectiveScope: ResourceInheritanceScope | null;
+    effectiveResource: ResourceMeta | null;
+    layers: WorkspaceResourceEffectiveLayer[];
+}
+export type WorkspaceResourceChangeOperation = "create" | "update" | "delete";
+export interface WorkspaceResourceOverrideImpact {
+    scope: "shared" | "personal";
+    owner: string;
+    label: string;
+    updatedAt: number;
+}
+export interface WorkspaceResourceChangeImpact {
+    operation: WorkspaceResourceChangeOperation;
+    path: string | null;
+    resourceId: string | null;
+    beforeScope: WorkspaceResourceScope | null;
+    afterScope: WorkspaceResourceScope | null;
+    affectsAllApps: boolean;
+    affectedApps: {
+        label: string;
+        count: number | null;
+        apps: Array<{
+            id: string;
+            name: string;
+        }>;
+    };
+    overrides: {
+        count: number;
+        sharedCount: number;
+        personalCount: number;
+        items: WorkspaceResourceOverrideImpact[];
+    };
+    approval: {
+        policyEnabled: boolean;
+        willRequestApproval: boolean;
+    };
+}
+export declare const STARTER_GLOBAL_WORKSPACE_RESOURCES: WorkspaceResourceInput[];
+export declare function ensureStarterWorkspaceResources(ctx?: WorkspaceResourceCtx): Promise<void>;
+export declare function restoreStarterWorkspaceResources(input?: {
+    paths?: string[];
+}): Promise<{
+    restored: WorkspaceResourceOption[];
+    existing: WorkspaceResourceOption[];
+    unknown: string[];
+}>;
 export declare function listWorkspaceResources(filter?: {
     kind?: string;
 }): Promise<{
@@ -47,7 +112,44 @@ export declare function listWorkspaceResources(filter?: {
 export declare function listWorkspaceResourceOptions(filter?: {
     kind?: string;
 }): Promise<WorkspaceResourceOption[]>;
+export declare function listWorkspaceResourcesForApp(appId: string): Promise<{
+    appId: string;
+    resources: WorkspaceResourceForApp[];
+    counts: {
+        total: number;
+        workspace: number;
+        global: number;
+        granted: number;
+        autoLoaded: number;
+    };
+}>;
+export declare function previewWorkspaceResourceChange(input: {
+    operation?: WorkspaceResourceChangeOperation;
+    resourceId?: string;
+    path?: string;
+    scope?: WorkspaceResourceScope;
+}): Promise<WorkspaceResourceChangeImpact>;
+export declare function getWorkspaceResourceEffectiveContext(input: {
+    resourceId?: string;
+    path?: string;
+    appId?: string | null;
+    userEmail?: string | null;
+}): Promise<WorkspaceResourceEffectiveContext>;
 export declare function getWorkspaceResource(resourceId: string, ctx?: WorkspaceResourceCtx): Promise<{
+    id: string;
+    ownerEmail: string;
+    orgId: string;
+    kind: string;
+    name: string;
+    description: string;
+    path: string;
+    content: string;
+    scope: string;
+    createdBy: string;
+    createdAt: number;
+    updatedAt: number;
+}>;
+export declare function applyWorkspaceResourceCreate(input: WorkspaceResourceInput, actor?: string, ctx?: WorkspaceResourceCtx): Promise<{
     id: string;
     ownerEmail: string;
     orgId: string;
@@ -74,8 +176,70 @@ export declare function createWorkspaceResource(input: WorkspaceResourceInput): 
     createdBy: string;
     createdAt: number;
     updatedAt: number;
+} | {
+    id: string;
+    ownerEmail: string;
+    orgId: string;
+    changeType: string;
+    targetType: string;
+    targetId: string;
+    status: string;
+    summary: string;
+    payload: string;
+    beforeValue: string;
+    afterValue: string;
+    requestedBy: string;
+    reviewedBy: string;
+    reviewedAt: number;
+    createdAt: number;
+    updatedAt: number;
+}>;
+export declare function applyWorkspaceResourceUpdate(resourceId: string, input: Partial<Pick<WorkspaceResourceInput, "name" | "description" | "content" | "scope">>, actor?: string, ctx?: WorkspaceResourceCtx): Promise<{
+    id: string;
+    ownerEmail: string;
+    orgId: string;
+    kind: string;
+    name: string;
+    description: string;
+    path: string;
+    content: string;
+    scope: string;
+    createdBy: string;
+    createdAt: number;
+    updatedAt: number;
 }>;
 export declare function updateWorkspaceResource(resourceId: string, input: Partial<Pick<WorkspaceResourceInput, "name" | "description" | "content" | "scope">>): Promise<{
+    id: string;
+    ownerEmail: string;
+    orgId: string;
+    kind: string;
+    name: string;
+    description: string;
+    path: string;
+    content: string;
+    scope: string;
+    createdBy: string;
+    createdAt: number;
+    updatedAt: number;
+} | {
+    id: string;
+    ownerEmail: string;
+    orgId: string;
+    changeType: string;
+    targetType: string;
+    targetId: string;
+    status: string;
+    summary: string;
+    payload: string;
+    beforeValue: string;
+    afterValue: string;
+    requestedBy: string;
+    reviewedBy: string;
+    reviewedAt: number;
+    createdAt: number;
+    updatedAt: number;
+}>;
+export declare function applyWorkspaceResourceDelete(resourceId: string, actor?: string, ctx?: WorkspaceResourceCtx): Promise<{
     id: string;
     ownerEmail: string;
     orgId: string;
@@ -100,6 +264,23 @@ export declare function deleteWorkspaceResource(resourceId: string): Promise<{
     content: string;
     scope: string;
     createdBy: string;
+    createdAt: number;
+    updatedAt: number;
+} | {
+    id: string;
+    ownerEmail: string;
+    orgId: string;
+    changeType: string;
+    targetType: string;
+    targetId: string;
+    status: string;
+    summary: string;
+    payload: string;
+    beforeValue: string;
+    afterValue: string;
+    requestedBy: string;
+    reviewedBy: string;
+    reviewedAt: number;
     createdAt: number;
     updatedAt: number;
 }>;
@@ -165,23 +346,6 @@ export declare function revokeResourceGrant(grantId: string, ctx?: WorkspaceReso
     createdAt: number;
     updatedAt: number;
 }>;
-/**
- * Push workspace resources to an app via its /_agent-native/resources endpoint.
- * Resources with scope="all" are always pushed. Resources with scope="selected"
- * are only pushed if there's an active grant for that app.
- */
-export declare function syncResourcesToApp(appId: string): Promise<{
-    appId: string;
-    synced: number;
-    resources: string[];
-}>;
-/**
- * Sync all workspace resources to all apps that have grants or scope="all" resources.
- */
-export declare function syncResourcesToAllApps(): Promise<{
-    appId: string;
-    synced: number;
-}[]>;
 export declare function listWorkspaceResourcesOverview(): Promise<{
     skillCount: number;
     instructionCount: number;

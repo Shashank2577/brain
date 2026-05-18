@@ -9,9 +9,10 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconBolt, IconExternalLink, IconLoader2 } from "@tabler/icons-react";
 import { agentNativePath } from "../api-path.js";
-import { getCallbackOrigin } from "../frame.js";
+import { openBuilderConnectPopup } from "../settings/useBuilderStatus.js";
 export function BuilderTranscriptionCta() {
     const [configured, setConfigured] = useState(null);
+    const [connectUrl, setConnectUrl] = useState(null);
     const [connecting, setConnecting] = useState(false);
     const [error, setError] = useState(null);
     const pollRef = useRef(null);
@@ -28,6 +29,7 @@ export function BuilderTranscriptionCta() {
             // Env-managed mode counts as configured for the CTA — the deploy
             // already routes transcription through Builder, no per-user prompt.
             setConfigured(!!(s?.configured || s?.envManaged));
+            setConnectUrl(s?.cliAuthUrl || s?.connectUrl || null);
         })
             .catch(() => {
             if (mountedRef.current)
@@ -44,8 +46,10 @@ export function BuilderTranscriptionCta() {
             clearInterval(pollRef.current);
         setConnecting(true);
         setError(null);
-        const origin = getCallbackOrigin() || window.location.origin;
-        window.open(new URL(agentNativePath("/_agent-native/builder/connect"), origin).href, "_blank", "noopener,noreferrer");
+        openBuilderConnectPopup({
+            url: connectUrl ?? undefined,
+            source: "builder_transcription_cta",
+        });
         const start = Date.now();
         pollRef.current = setInterval(async () => {
             try {
@@ -72,7 +76,7 @@ export function BuilderTranscriptionCta() {
                 // transient — keep polling
             }
         }, 2000);
-    }, []);
+    }, [connectUrl]);
     // Already connected or still loading — render nothing
     if (configured === null || configured)
         return null;

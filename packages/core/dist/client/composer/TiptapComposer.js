@@ -26,6 +26,16 @@ export function canSubmitComposerContent(options) {
     return (!options.disabled &&
         (options.hasEditorContent || options.attachmentCount > 0));
 }
+export function getComposerSubmitIntentForEnterKey(event, isMac) {
+    if (event.key !== "Enter" || event.shiftKey)
+        return null;
+    const queuedModifierPressed = isMac ? event.metaKey : event.ctrlKey;
+    if (queuedModifierPressed)
+        return "queued";
+    if (!event.metaKey && !event.ctrlKey)
+        return "immediate";
+    return null;
+}
 export function displayableComposerModeMessage(options) {
     const modePrompt = options.trimmedText ||
         (options.attachmentCount > 0 ? "Use the attached context." : "");
@@ -39,6 +49,33 @@ const BUILT_IN_COMMANDS = [
     { name: "act", description: "Switch back to acting", icon: "act" },
     { name: "help", description: "Show available commands", icon: "help" },
 ];
+function normalizeSlashCommandName(name) {
+    return name.replace(/^\/+/, "").trim().toLowerCase();
+}
+function mergeSlashCommands(commands) {
+    const seen = new Set();
+    const merged = [];
+    for (const command of commands) {
+        const name = normalizeSlashCommandName(command.name);
+        if (!name || seen.has(name))
+            continue;
+        seen.add(name);
+        merged.push({ ...command, name });
+    }
+    return merged;
+}
+function mergeSlashSkills(skills) {
+    const seen = new Set();
+    const merged = [];
+    for (const skill of skills) {
+        const key = `${skill.source ?? ""}:${skill.path ?? ""}:${skill.name}`;
+        if (!skill.name || seen.has(key))
+            continue;
+        seen.add(key);
+        merged.push(skill);
+    }
+    return merged;
+}
 const COMPOSER_MODE_CONFIGS = {
     skill: {
         label: "Create Skill",
@@ -114,6 +151,16 @@ function ComposerModeChip({ mode, onRemove, }) {
     const Icon = config.icon;
     return (_jsxs("span", { className: "inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-1.5 py-0.5 text-xs font-medium text-foreground", children: [_jsx(Icon, { className: "h-3 w-3 text-muted-foreground" }), config.label, _jsx("button", { type: "button", onClick: onRemove, className: "ml-0.5 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer", children: _jsx(IconX, { className: "h-3 w-3" }) })] }));
 }
+function plainTextToDoc(text) {
+    const lines = text.length > 0 ? text.split(/\r?\n/) : [""];
+    return {
+        type: "doc",
+        content: lines.map((line) => ({
+            type: "paragraph",
+            content: line ? [{ type: "text", text: line }] : [],
+        })),
+    };
+}
 export function createTiptapComposerExtensions(getPlaceholder) {
     return [
         StarterKit.configure({
@@ -147,8 +194,7 @@ export function createTiptapComposerExtensions(getPlaceholder) {
 }
 function ModeSelector({ mode, onChange, planModeDisabled = false, planModeDisabledReason = "Open Brain Desktop to use Plan mode.", }) {
     const [open, setOpen] = useState(false);
-    const ActiveIcon = mode === "build" ? IconPencil : IconClipboardList;
-    return (_jsxs(PopoverPrimitive.Root, { open: open, onOpenChange: setOpen, children: [_jsx(PopoverPrimitive.Trigger, { asChild: true, children: _jsxs("button", { type: "button", "aria-label": mode === "build" ? "Act mode" : "Plan mode", className: "shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground", children: [_jsx(ActiveIcon, { className: "h-3.5 w-3.5" }), mode === "build" ? "Act" : "Plan", _jsx(IconChevronDown, { className: "h-3 w-3 opacity-60" })] }) }), _jsx(PopoverPrimitive.Portal, { children: _jsxs(PopoverPrimitive.Content, { side: "top", align: "end", sideOffset: 6, "data-agent-native-composer-popover": "true", className: "z-[260] w-60 rounded-lg border border-border bg-popover py-1 shadow-lg animate-in fade-in-0 zoom-in-95", style: { fontSize: 13 }, children: [_jsxs("button", { type: "button", onClick: () => {
+    return (_jsxs(PopoverPrimitive.Root, { open: open, onOpenChange: setOpen, children: [_jsx(PopoverPrimitive.Trigger, { asChild: true, children: _jsxs("button", { type: "button", "aria-label": mode === "build" ? "Act mode" : "Plan mode", "data-agent-composer-slot": "mode-button", className: "agent-composer-mode-button shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground", children: [mode === "build" ? "Act" : "Plan", _jsx(IconChevronDown, { className: "h-3 w-3 opacity-60" })] }) }), _jsx(PopoverPrimitive.Portal, { children: _jsxs(PopoverPrimitive.Content, { side: "top", align: "end", sideOffset: 6, "data-agent-native-composer-popover": "true", className: "z-[260] w-60 rounded-lg border border-border bg-popover py-1 shadow-lg animate-in fade-in-0 zoom-in-95", style: { fontSize: 13 }, children: [_jsxs("button", { type: "button", onClick: () => {
                                 onChange("build");
                                 setOpen(false);
                             }, className: "flex w-full items-center gap-3 px-3 py-2 hover:bg-accent/50 text-left", children: [_jsx(IconPencil, { className: "h-4 w-4 shrink-0 text-muted-foreground" }), _jsxs("div", { className: "flex-1 min-w-0", children: [_jsx("span", { className: "font-medium text-foreground text-[13px]", children: "Act" }), _jsx("p", { className: "text-[11px] text-muted-foreground mt-0.5", children: "Use tools and make approved changes" })] }), mode === "build" && (_jsx(IconCheck, { className: "h-3.5 w-3.5 shrink-0 text-blue-500" }))] }), _jsxs("button", { type: "button", disabled: planModeDisabled, title: planModeDisabled ? planModeDisabledReason : undefined, onClick: () => {
@@ -163,6 +209,7 @@ function ModeSelector({ mode, onChange, planModeDisabled = false, planModeDisabl
                                                 : "Read-only research and approval first" })] }), mode === "plan" && !planModeDisabled && (_jsx(IconCheck, { className: "h-3.5 w-3.5 shrink-0 text-blue-500" }))] })] }) })] }));
 }
 const FRIENDLY_MODEL_NAMES = {
+    auto: "Default model",
     "grok-code-fast": "Grok Code Fast",
     "qwen3-coder": "Qwen3 Coder",
     "kimi-k2-5": "Kimi K2.5",
@@ -244,16 +291,32 @@ function latestModelsOnly(models) {
         return true;
     });
 }
-function ModelSelector({ model, effort = "auto", engines, onChange, onEffortChange, }) {
+function ModelSelector({ model, effort = "auto", engines, onChange, onEffortChange, providerConnectStatusEnabled = true, onConnectProvider, }) {
     const [open, setOpen] = useState(false);
-    const effortOptions = getReasoningEffortOptionsForModel(model);
+    const autoModelGroup = engines.find((group) => group.models.includes("auto"));
+    const providerGroups = useMemo(() => engines
+        .map((group) => ({
+        ...group,
+        models: group.models.filter((candidate) => candidate !== "auto"),
+    }))
+        .filter((group) => group.models.length > 0), [engines]);
+    const effortOptions = model === "auto"
+        ? [
+            "auto",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+        ]
+        : getReasoningEffortOptionsForModel(model);
     // Collapse non-selected families by default. The family containing the
     // currently-selected model stays expanded so the user sees their pick at
     // a glance; clicking another family's header expands it inline.
     const selectedGroupKey = useMemo(() => {
-        const found = engines.find((g) => g.models.includes(model));
+        const found = providerGroups.find((g) => g.models.includes(model));
         return found ? `${found.engine}:${found.label}` : null;
-    }, [engines, model]);
+    }, [model, providerGroups]);
     const [expandedGroups, setExpandedGroups] = useState(() => new Set(selectedGroupKey ? [selectedGroupKey] : []));
     // Reset expansion when the popover re-opens so the picker always lands
     // on the "selected family expanded, others collapsed" view.
@@ -275,10 +338,16 @@ function ModelSelector({ model, effort = "auto", engines, onChange, onEffortChan
     // When Builder.io isn't connected, surface a one-click connect path —
     // it unlocks every model family (Claude, OpenAI, Gemini) without the
     // user having to paste individual API keys.
-    const builderFlow = useBuilderConnectFlow();
-    const showBuilderCta = builderFlow.hasFetchedStatus &&
+    const builderFlow = useBuilderConnectFlow({
+        enabled: providerConnectStatusEnabled,
+        trackingSource: "composer_builder_cta",
+    });
+    const hasConfiguredBuilderModels = providerGroups.some((group) => group.engine === "builder" && group.configured);
+    const showBuilderCta = (builderFlow.hasFetchedStatus ||
+        (!providerConnectStatusEnabled && !!onConnectProvider)) &&
         !builderFlow.configured &&
-        !builderFlow.envManaged;
+        !builderFlow.envManaged &&
+        !hasConfiguredBuilderModels;
     const openLlmSettings = useCallback(() => {
         try {
             window.location.hash = "llm";
@@ -287,11 +356,19 @@ function ModelSelector({ model, effort = "auto", engines, onChange, onEffortChan
         window.dispatchEvent(new CustomEvent("agent-panel:open-settings"));
         setOpen(false);
     }, []);
-    return (_jsxs(PopoverPrimitive.Root, { open: open, onOpenChange: setOpen, children: [_jsx(PopoverPrimitive.Trigger, { asChild: true, children: _jsxs("button", { type: "button", className: "flex min-w-0 max-w-[10.5rem] shrink items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground", children: [_jsx("span", { className: "min-w-0 truncate", children: friendlyModelName(model) }), effortOptions.length > 0 && (_jsxs("span", { className: "min-w-0 truncate text-muted-foreground/70", children: ["\u00B7 ", reasoningEffortLabel(effort)] })), _jsx(IconChevronDown, { className: "h-3 w-3 shrink-0 opacity-60" })] }) }), _jsx(PopoverPrimitive.Portal, { children: _jsxs(PopoverPrimitive.Content, { side: "top", align: "end", sideOffset: 6, "data-agent-native-composer-popover": "true", className: "z-[260] max-h-[500px] w-72 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-lg animate-in fade-in-0 zoom-in-95", style: { fontSize: 13 }, children: [showBuilderCta && (_jsxs(_Fragment, { children: [_jsxs("button", { type: "button", onClick: () => {
-                                        builderFlow.start();
-                                    }, disabled: builderFlow.connecting, className: "flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-accent/50 disabled:opacity-60", children: [_jsx(IconPlugConnected, { className: "h-4 w-4 shrink-0 mt-0.5 text-blue-500" }), _jsxs("span", { className: "flex-1 min-w-0", children: [_jsx("span", { className: "block text-[12px] font-medium text-foreground", children: builderFlow.connecting
+    return (_jsxs(PopoverPrimitive.Root, { open: open, onOpenChange: setOpen, children: [_jsx(PopoverPrimitive.Trigger, { asChild: true, children: _jsxs("button", { type: "button", "data-agent-composer-slot": "model-button", className: "agent-composer-model-button flex min-w-0 max-w-[10.5rem] shrink items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground", children: [_jsx("span", { className: "min-w-0 truncate", children: friendlyModelName(model) }), effortOptions.length > 0 && (_jsxs("span", { className: "agent-composer-model-effort min-w-0 shrink truncate text-muted-foreground/70", children: ["\u00B7 ", reasoningEffortLabel(effort)] })), _jsx(IconChevronDown, { className: "h-3 w-3 shrink-0 opacity-60" })] }) }), _jsx(PopoverPrimitive.Portal, { children: _jsxs(PopoverPrimitive.Content, { side: "top", align: "end", sideOffset: 6, "data-agent-native-composer-popover": "true", className: "z-[260] max-h-[500px] w-72 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-lg animate-in fade-in-0 zoom-in-95", style: { fontSize: 13 }, children: [showBuilderCta && (_jsxs(_Fragment, { children: [_jsxs("button", { type: "button", onClick: () => {
+                                        if (onConnectProvider) {
+                                            onConnectProvider();
+                                        }
+                                        else {
+                                            builderFlow.start();
+                                        }
+                                    }, disabled: !onConnectProvider && builderFlow.connecting, className: "flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-accent/50 disabled:opacity-60", children: [_jsx(IconPlugConnected, { className: "h-4 w-4 shrink-0 mt-0.5 text-blue-500" }), _jsxs("span", { className: "flex-1 min-w-0", children: [_jsx("span", { className: "block text-[12px] font-medium text-foreground", children: !onConnectProvider && builderFlow.connecting
                                                         ? "Connecting Builder.io…"
-                                                        : "Connect Builder.io" }), _jsx("span", { className: "block text-[11px] text-muted-foreground", children: "Free credits for Claude, OpenAI & Gemini" })] })] }), _jsx("div", { className: "my-1 border-t border-border" })] })), engines.map((group) => {
+                                                        : "Connect Builder.io" }), _jsx("span", { className: "block text-[11px] text-muted-foreground", children: "Free credits for Claude, OpenAI & Gemini" })] })] }), _jsx("div", { className: "my-1 border-t border-border" })] })), autoModelGroup && (_jsxs("button", { type: "button", onClick: () => {
+                                onChange("auto", autoModelGroup.engine);
+                                setOpen(false);
+                            }, className: "flex w-full items-center gap-3 px-3 py-1.5 text-left hover:bg-accent/50", children: [_jsx("span", { className: "flex-1 min-w-0 text-[13px] text-foreground truncate", children: "Auto" }), model === "auto" && (_jsx(IconCheck, { className: "h-3.5 w-3.5 shrink-0 text-blue-500" }))] })), autoModelGroup && providerGroups.length > 0 && (_jsx("div", { className: "my-1 border-t border-border" })), providerGroups.map((group) => {
                             const models = latestModelsOnly(group.models);
                             const groupKey = `${group.engine}:${group.label}`;
                             const isExpanded = expandedGroups.has(groupKey);
@@ -314,7 +391,7 @@ function ModelSelector({ model, effort = "auto", engines, onChange, onEffortChan
                                                 : "opacity-40 cursor-default"}`, children: [_jsx("span", { className: "flex-1 min-w-0 text-[13px] text-foreground truncate", children: friendlyModelName(m) }), m === model && group.configured && (_jsx(IconCheck, { className: "h-3.5 w-3.5 shrink-0 text-blue-500" }))] }, m)))] }, groupKey));
                         }), effortOptions.length > 0 && (_jsxs(_Fragment, { children: [_jsx("div", { className: "my-1 border-t border-border" }), _jsx("div", { className: "px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide", children: "Reasoning" }), effortOptions.map((option) => (_jsxs("button", { type: "button", onClick: () => onEffortChange?.(option), className: "flex w-full items-center gap-3 px-3 py-1.5 text-left hover:bg-accent/50", children: [_jsx("span", { className: "flex-1 min-w-0 text-[13px] text-foreground truncate", children: reasoningEffortLabel(option) }), option === effort && (_jsx(IconCheck, { className: "h-3.5 w-3.5 shrink-0 text-blue-500" }))] }, option)))] }))] }) })] }));
 }
-export function TiptapComposer({ placeholder = "Message agent...", disabled = false, focusRef, onSubmit, clearOnSubmit = true, onTextChange, actionButton, extraActionButton, attachButton, onSlashCommand, execMode, onExecModeChange, planModeDisabled = false, planModeDisabledReason, voiceEnabled = true, selectedModel, selectedEffort, availableModels, onModelChange, onEffortChange, draftScope, plusMenuMode = "full", interceptBuildRequestsForBuilder = false, }) {
+export function TiptapComposer({ placeholder = "Message agent...", disabled = false, focusRef, initialText, initialTextKey, onSubmit, clearOnSubmit = true, onTextChange, actionButton, extraActionButton, attachButton, modeControl, toolbarSlot, layoutVariant = "default", slashCommands = [], slashSkills = [], includeDefaultSlashCommands = true, includeDefaultSlashSkills = true, onSlashCommand, execMode, onExecModeChange, planModeDisabled = false, planModeDisabledReason, voiceEnabled = true, selectedModel, selectedEffort, availableModels, onModelChange, onEffortChange, providerConnectStatusEnabled, onConnectProvider, draftScope, plusMenuMode = "full", interceptBuildRequestsForBuilder = false, }) {
     const [popover, setPopover] = useState(null);
     const popoverRef = useRef(null);
     const composerRuntime = useComposerRuntime();
@@ -339,25 +416,33 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
     const planModeDisabledRef = useRef(planModeDisabled);
     planModeDisabledRef.current = planModeDisabled;
     const { items: mentionItems, isLoading: mentionsLoading } = useMentionSearch(popover?.type === "@" ? popover.query : "", popover?.type === "@");
-    const { skills, hint, isLoading: skillsLoading, } = useSkills(popover?.type === "/");
+    const { skills, hint, isLoading: skillsLoading, } = useSkills(includeDefaultSlashSkills && popover?.type === "/");
+    const allSlashCommands = useMemo(() => mergeSlashCommands([
+        ...(includeDefaultSlashCommands ? BUILT_IN_COMMANDS : []),
+        ...slashCommands,
+    ]), [includeDefaultSlashCommands, slashCommands]);
+    const allSlashSkills = useMemo(() => mergeSlashSkills([
+        ...(includeDefaultSlashSkills ? skills : []),
+        ...slashSkills,
+    ]), [includeDefaultSlashSkills, skills, slashSkills]);
     const filteredCommands = useMemo(() => {
         if (!popover || popover.type !== "/")
-            return BUILT_IN_COMMANDS;
+            return allSlashCommands;
         const q = popover.query.toLowerCase();
         if (!q)
-            return BUILT_IN_COMMANDS;
-        return BUILT_IN_COMMANDS.filter((c) => c.name.toLowerCase().includes(q) ||
+            return allSlashCommands;
+        return allSlashCommands.filter((c) => c.name.toLowerCase().includes(q) ||
             c.description.toLowerCase().includes(q));
-    }, [popover]);
+    }, [allSlashCommands, popover]);
     const filteredSkills = useMemo(() => {
         if (!popover || popover.type !== "/")
-            return skills;
+            return allSlashSkills;
         const q = popover.query.toLowerCase();
         if (!q)
-            return skills;
-        return skills.filter((s) => s.name.toLowerCase().includes(q) ||
+            return allSlashSkills;
+        return allSlashSkills.filter((s) => s.name.toLowerCase().includes(q) ||
             s.description?.toLowerCase().includes(q));
-    }, [skills, popover]);
+    }, [allSlashSkills, popover]);
     // Keep refs in sync with state
     const mentionItemsRef = useRef(mentionItems);
     mentionItemsRef.current = mentionItems;
@@ -369,6 +454,7 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
     onSlashCommandRef.current = onSlashCommand;
     const onTextChangeRef = useRef(onTextChange);
     onTextChangeRef.current = onTextChange;
+    const initialTextKeyRef = useRef(undefined);
     const closePopover = useCallback(() => {
         setPopover(null);
         popoverStateRef.current = null;
@@ -390,11 +476,19 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
         onCreate: ({ editor: ed }) => {
             // Restore draft on mount
             try {
-                const saved = localStorage.getItem(draftKey);
-                if (saved) {
-                    ed.commands.setContent(saved);
+                if (initialText !== undefined) {
+                    ed.commands.setContent(plainTextToDoc(initialText));
                     ed.commands.focus("end");
                     setEditorHasText(ed.state.doc.textContent.trim().length > 0);
+                    initialTextKeyRef.current = initialTextKey ?? initialText;
+                }
+                else {
+                    const saved = localStorage.getItem(draftKey);
+                    if (saved) {
+                        ed.commands.setContent(saved);
+                        ed.commands.focus("end");
+                        setEditorHasText(ed.state.doc.textContent.trim().length > 0);
+                    }
                 }
                 onTextChangeRef.current?.(ed.state.doc.textContent.trim());
             }
@@ -435,7 +529,9 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
         },
         editorProps: {
             attributes: {
-                class: "flex-1 resize-none bg-transparent text-sm text-foreground outline-none leading-[1.625rem] min-h-[3.25rem] max-h-[10rem] overflow-y-auto",
+                "data-agent-composer-variant": layoutVariant,
+                "data-agent-composer-slot": "editor-input",
+                class: "agent-composer-prosemirror flex-1 resize-none bg-transparent text-sm text-foreground outline-none leading-[1.625rem] min-h-[3.25rem] max-h-[10rem] overflow-y-auto",
             },
             handlePaste: (_view, event) => {
                 const pastedText = event.clipboardData?.getData("text/plain") ?? "";
@@ -573,13 +669,12 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
                     }
                     return true;
                 }
-                // Submit on Enter (Shift+Enter for newline)
-                if (event.key === "Enter" &&
-                    !event.shiftKey &&
-                    !event.metaKey &&
-                    !event.ctrlKey) {
+                // Submit on Enter. Shift+Enter falls through to Tiptap for a newline;
+                // Cmd+Enter on macOS / Ctrl+Enter elsewhere marks the submit queued.
+                const submitIntent = getComposerSubmitIntentForEnterKey(event, isMac);
+                if (submitIntent) {
                     event.preventDefault();
-                    submitComposer();
+                    submitComposer(submitIntent);
                     return true;
                 }
                 // Detect @ trigger — only when preceded by start-of-text, space, or newline
@@ -819,7 +914,7 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
         composerRuntime.setRunConfig(references.length > 0 ? { custom: { references } } : {});
         return { text, references };
     }, [composerRuntime, extractComposerPayload]);
-    const submitComposer = useCallback(() => {
+    const submitComposer = useCallback((intent = "immediate") => {
         const ed = editor;
         if (!ed)
             return;
@@ -837,8 +932,8 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
         // Intercept slash commands typed directly (e.g. "/clear" + Enter)
         const trimmed = text.trim();
         if (trimmed.startsWith("/") && references.length === 0) {
-            const cmdName = trimmed.slice(1).toLowerCase();
-            const matched = BUILT_IN_COMMANDS.find((c) => c.name === cmdName);
+            const cmdName = normalizeSlashCommandName(trimmed);
+            const matched = allSlashCommands.find((c) => c.name === cmdName);
             if (matched) {
                 ed.commands.clearContent();
                 try {
@@ -859,7 +954,8 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
                 trimmedText: trimmed,
                 attachmentCount: attachments.length,
             });
-            const modePrompt = trimmed || (attachments.length > 0 ? "Use the attached context." : "");
+            const modePrompt = trimmed ||
+                (attachments.length > 0 ? "Use the attached context." : "");
             if (attachments.length > 0) {
                 composerRuntime.setText(`${message}\n\n<context>\n${config.getContext(modePrompt)}\n</context>`);
                 composerRuntime.send();
@@ -902,7 +998,7 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
             return;
         }
         if (onSubmit) {
-            onSubmit(text, references, attachments);
+            onSubmit(text, references, attachments, { intent });
             // Clear any pending attachments now that the host has them.
             void composerRuntime.clearAttachments().catch(() => { });
             if (!clearOnSubmit) {
@@ -931,6 +1027,7 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
         onSubmit,
         syncComposerState,
         voice,
+        allSlashCommands,
     ]);
     // Helper functions that operate on the editor view directly
     // These are called from handleKeyDown which can't use React state
@@ -1089,6 +1186,29 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
             return;
         editor.commands.clearContent();
     }, [composerText, editor]);
+    useEffect(() => {
+        if (!editor || initialText === undefined)
+            return;
+        const key = initialTextKey ?? initialText;
+        if (initialTextKeyRef.current === key)
+            return;
+        initialTextKeyRef.current = key;
+        editor.commands.setContent(plainTextToDoc(initialText));
+        editor.commands.focus("end");
+        const trimmed = editor.state.doc.textContent.trim();
+        setEditorHasText(trimmed.length > 0);
+        composerRuntime.setText(trimmed);
+        onTextChangeRef.current?.(trimmed);
+        try {
+            if (trimmed) {
+                localStorage.setItem(draftKey, editor.getHTML());
+            }
+            else {
+                localStorage.removeItem(draftKey);
+            }
+        }
+        catch { }
+    }, [composerRuntime, draftKey, editor, initialText, initialTextKey]);
     // Tiptap only reads `editable` at init; prop changes need setEditable.
     useEffect(() => {
         if (!editor)
@@ -1106,11 +1226,11 @@ export function TiptapComposer({ placeholder = "Message agent...", disabled = fa
           height: 0;
           pointer-events: none;
         }
-      ` }), composerMode && (_jsx("div", { className: "px-2.5 pt-2 pb-0", children: _jsx(ComposerModeChip, { mode: composerMode, onRemove: () => {
+      ` }), composerMode && (_jsx("div", { "data-agent-composer-variant": layoutVariant, "data-agent-composer-slot": "mode-row", className: "agent-composer-mode-row px-2.5 pt-2 pb-0", children: _jsx(ComposerModeChip, { mode: composerMode, onRemove: () => {
                         setComposerMode(null);
                         composerModeRef.current = null;
                         editor?.commands.focus("end");
-                    } }) })), _jsx("div", { className: composerMode ? "px-2 pt-1 pb-1" : "px-2 pt-2 pb-1", children: _jsx(EditorContent, { editor: editor, className: "aui-composer flex-1 min-w-0 [&_.ProseMirror]:outline-none [&_.ProseMirror_p]:m-0 px-0.5" }) }), voiceEnabled && _jsx(VoiceRecordingOverlay, { voice: voice }), _jsxs("div", { className: "flex items-center gap-1 px-2 py-1.5", children: [attachButton ??
-                        (plusMenuMode === "hidden" ? null : (_jsx(ComposerPlusMenu, { onSelectMode: handleSelectMode, mode: plusMenuMode }))), !actionButton && (_jsxs(_Fragment, { children: [selectedModel && availableModels && onModelChange && (_jsx(ModelSelector, { model: selectedModel, effort: selectedEffort, engines: availableModels, onChange: onModelChange, onEffortChange: onEffortChange })), execMode && onExecModeChange && (_jsx(ModeSelector, { mode: execMode, onChange: onExecModeChange, planModeDisabled: planModeDisabled, planModeDisabledReason: planModeDisabledReason }))] })), _jsx("div", { className: "flex-1" }), actionButton ?? (_jsxs(_Fragment, { children: [voiceEnabled && (_jsx(VoiceButton, { voice: voice, isMac: isMac, disabled: disabled })), extraActionButton, _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { type: "button", onClick: submitComposer, disabled: !canSend, className: "shrink-0 flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed", children: _jsx(IconArrowUp, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Send message" })] })] }))] }), _jsx(MentionPopover, { ref: popoverRef, type: popover?.type ?? "@", position: popover?.position ?? null, mentionItems: mentionItems, skills: filteredSkills, commands: filteredCommands, hint: hint, isLoading: popover?.type === "@" ? mentionsLoading : skillsLoading, query: popover?.query ?? "", onSelectMention: handleSelectMention, onSelectSkill: handleSelectSkill, onSelectCommand: handleSelectCommand, onClose: closePopover })] }));
+                    } }) })), _jsx("div", { "data-agent-composer-variant": layoutVariant, "data-agent-composer-slot": "editor-wrap", className: `agent-composer-editor-wrap ${composerMode ? "px-2 pt-1 pb-1" : "px-2 pt-2 pb-1"}`, children: _jsx(EditorContent, { editor: editor, "data-agent-composer-variant": layoutVariant, "data-agent-composer-slot": "editor", className: "agent-composer-editor aui-composer flex-1 min-w-0 [&_.ProseMirror]:outline-none [&_.ProseMirror_p]:m-0 px-0.5" }) }), voiceEnabled && _jsx(VoiceRecordingOverlay, { voice: voice }), _jsxs("div", { "data-agent-composer-variant": layoutVariant, "data-agent-composer-slot": "toolbar", className: "agent-composer-toolbar flex items-center gap-1 px-2 py-1.5", children: [attachButton ??
+                        (plusMenuMode === "hidden" ? null : (_jsx(ComposerPlusMenu, { onSelectMode: handleSelectMode, mode: plusMenuMode }))), toolbarSlot ?? modeControl, _jsx("div", { "data-agent-composer-slot": "toolbar-spacer", className: "flex-1" }), selectedModel && availableModels && onModelChange && (_jsx(ModelSelector, { model: selectedModel, effort: selectedEffort, engines: availableModels, onChange: onModelChange, onEffortChange: onEffortChange, providerConnectStatusEnabled: providerConnectStatusEnabled, onConnectProvider: onConnectProvider })), execMode && onExecModeChange && (_jsx(ModeSelector, { mode: execMode, onChange: onExecModeChange, planModeDisabled: planModeDisabled, planModeDisabledReason: planModeDisabledReason })), actionButton ?? (_jsxs(_Fragment, { children: [voiceEnabled && (_jsx(VoiceButton, { voice: voice, isMac: isMac, disabled: disabled })), extraActionButton, _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { type: "button", onClick: () => submitComposer("immediate"), disabled: !canSend, "data-agent-composer-slot": "send-button", className: "agent-composer-send-button shrink-0 flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed", children: _jsx(IconArrowUp, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Send message" })] })] }))] }), _jsx(MentionPopover, { ref: popoverRef, type: popover?.type ?? "@", position: popover?.position ?? null, mentionItems: mentionItems, skills: filteredSkills, commands: filteredCommands, hint: hint, isLoading: popover?.type === "@" ? mentionsLoading : skillsLoading, query: popover?.query ?? "", onSelectMention: handleSelectMention, onSelectSkill: handleSelectSkill, onSelectCommand: handleSelectCommand, onClose: closePopover })] }));
 }
 //# sourceMappingURL=TiptapComposer.js.map

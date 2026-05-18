@@ -1,5 +1,6 @@
 import { agentNativePath } from "../api-path.js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { mcpBuiltinVirtualId, } from "./use-builtin-capabilities.js";
 /**
  * Inject a virtual `mcp-servers/` folder into a scope's resource tree.
  *
@@ -16,8 +17,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
  */
 export function withMcpServersFolder(tree, servers, opts) {
     const alwaysShow = opts?.alwaysShow ?? false;
-    if (servers.length === 0 && !alwaysShow)
+    const builtins = opts?.builtins ?? [];
+    if (servers.length === 0 && builtins.length === 0 && !alwaysShow) {
         return tree;
+    }
     // Filter out any real `mcp-servers/` entries so the virtual folder is
     // authoritative. (Shouldn't happen today, but guards against collisions
     // if a user pastes a file there.)
@@ -40,9 +43,43 @@ export function withMcpServersFolder(tree, servers, opts) {
                 size: 0,
                 createdAt: s.createdAt,
                 updatedAt: s.createdAt,
+                createdBy: "system",
+                visibility: "workspace",
+                threadId: null,
+                runId: null,
+                expiresAt: null,
+                metadata: null,
             },
         };
     });
+    for (const { capability, scope } of builtins) {
+        const scopeEnabled = capability.enabled[scope];
+        const virtualId = mcpBuiltinVirtualId(scope, capability.id);
+        const path = `mcp-servers/${capability.id}.json`;
+        children.push({
+            name: `${capability.name}.json`,
+            path,
+            type: "file",
+            kind: "mcp-builtin",
+            mcpBuiltinMeta: { ...capability, scope, scopeEnabled },
+            resource: {
+                id: virtualId,
+                path,
+                owner: scope,
+                mimeType: "application/json",
+                size: 0,
+                createdAt: 0,
+                updatedAt: scopeEnabled ? now : 0,
+                createdBy: "system",
+                visibility: "workspace",
+                threadId: null,
+                runId: null,
+                expiresAt: null,
+                metadata: null,
+            },
+        });
+    }
+    children.sort((a, b) => a.name.localeCompare(b.name));
     const folder = {
         name: "mcp-servers",
         path: "mcp-servers",
@@ -74,17 +111,25 @@ export function withMcpServersFolder(tree, servers, opts) {
  * keeps them visible (so the user can inspect or delete) without making
  * them look like first-class personal files.
  */
-export function withAgentScratchFolder(tree) {
+function isTopLevelAgentScratchNode(node) {
+    return (node.resource?.visibility === "agent_scratch" ||
+        (node.type === "folder" &&
+            (node.name === "scripts" || node.name === "tasks")));
+}
+export function withAgentScratchFolder(tree, opts) {
+    const show = opts?.show ?? true;
     const scratch = [];
     const rest = [];
     for (const n of tree) {
-        if (n.type === "folder" && (n.name === "scripts" || n.name === "tasks")) {
+        if (isTopLevelAgentScratchNode(n)) {
             scratch.push(n);
         }
         else {
             rest.push(n);
         }
     }
+    if (!show)
+        return rest;
     if (scratch.length === 0)
         return tree;
     const folder = {
@@ -109,19 +154,23 @@ async function fetchJson(url) {
     return res.json();
 }
 export function useResources(scope = "personal") {
+    const query = new URLSearchParams({ scope });
     return useQuery({
         queryKey: ["resources", "list", scope],
         queryFn: async () => {
-            const data = await fetchJson(agentNativePath(`/_agent-native/resources?scope=${scope}`));
+            const data = await fetchJson(agentNativePath(`/_agent-native/resources?${query.toString()}`));
             return data.resources ?? [];
         },
     });
 }
-export function useResourceTree(scope = "personal") {
+export function useResourceTree(scope = "personal", opts) {
     return useQuery({
-        queryKey: ["resources", "tree", scope],
+        queryKey: ["resources", "tree", scope, opts?.includeAgentScratch ?? false],
         queryFn: async () => {
-            const data = await fetchJson(agentNativePath(`/_agent-native/resources/tree?scope=${scope}`));
+            const query = new URLSearchParams({ scope });
+            if (opts?.includeAgentScratch)
+                query.set("includeAgentScratch", "true");
+            const data = await fetchJson(agentNativePath(`/_agent-native/resources/tree?${query.toString()}`));
             return data.tree ?? [];
         },
     });
@@ -131,6 +180,16 @@ export function useResource(id) {
         queryKey: ["resource", id],
         queryFn: () => fetchJson(agentNativePath(`/_agent-native/resources/${id}`)),
         enabled: !!id,
+    });
+}
+export function useEffectiveResourceContext(path) {
+    return useQuery({
+        queryKey: ["resources", "effective", path],
+        queryFn: async () => {
+            const query = new URLSearchParams({ path: path ?? "" });
+            return fetchJson(agentNativePath(`/_agent-native/resources/effective?${query}`));
+        },
+        enabled: !!path,
     });
 }
 export function useCreateResource() {

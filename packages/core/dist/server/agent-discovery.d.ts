@@ -1,3 +1,4 @@
+import { type WorkspaceAppAudience } from "../shared/workspace-app-audience.js";
 export interface DiscoveredAgent {
     id: string;
     name: string;
@@ -5,6 +6,18 @@ export interface DiscoveredAgent {
     url: string;
     color: string;
 }
+export interface WorkspaceAppMetadataOverride {
+    name?: string;
+    description?: string;
+    generated?: boolean;
+    sourcePrompt?: string;
+    updatedAt?: string;
+    updatedBy?: string;
+}
+export interface WorkspaceAppMetadataSettings {
+    apps: Record<string, WorkspaceAppMetadataOverride>;
+}
+export declare const WORKSPACE_APP_METADATA_SETTINGS_KEY = "workspace-app-metadata";
 export interface WorkspaceAppManifestEntry {
     id: string;
     name: string;
@@ -12,7 +25,29 @@ export interface WorkspaceAppManifestEntry {
     path: string;
     url?: string | null;
     isDispatch?: boolean;
+    audience?: WorkspaceAppAudience;
+    publicPaths?: string[];
+    protectedPaths?: string[];
 }
+export declare function workspaceAppMetadataSettingsKey(input?: {
+    orgId?: string | null;
+    userEmail?: string | null;
+}): string | null;
+export declare function parseWorkspaceAppMetadataSettings(raw: unknown): WorkspaceAppMetadataSettings;
+export declare function readWorkspaceAppMetadataSettings(): Promise<WorkspaceAppMetadataSettings>;
+export declare function writeWorkspaceAppMetadataOverride(input: {
+    appId: string;
+    name?: string | null;
+    description?: string | null;
+    generated?: boolean;
+    sourcePrompt?: string | null;
+    updatedBy?: string | null;
+}): Promise<WorkspaceAppMetadataSettings>;
+export declare function applyWorkspaceAppMetadataOverride<T extends {
+    id: string;
+    name: string;
+    description?: string | null;
+}>(app: T, settings: WorkspaceAppMetadataSettings): T;
 /**
  * Resolve the workspace app manifest from the same fallback chain that
  * `discoverWorkspaceAgents` uses: `AGENT_NATIVE_WORKSPACE_APPS_JSON` env →

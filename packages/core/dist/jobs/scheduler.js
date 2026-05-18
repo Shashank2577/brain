@@ -2,7 +2,7 @@ import { runWithRequestContext } from "../server/request-context.js";
 import { nextOccurrence, isValidCron, describeCron } from "./cron.js";
 import { resourceListAllOwners, resourcePut, } from "../resources/store.js";
 import { runAgentLoop, actionsToEngineTools, getOwnerActiveApiKey, } from "../agent/production-agent.js";
-import { createAnthropicEngine } from "../agent/engine/index.js";
+import { getStoredModelForEngine, resolveEngine, } from "../agent/engine/index.js";
 import { createThread } from "../chat-threads/store.js";
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
 export function parseJobFrontmatter(content) {
@@ -298,7 +298,13 @@ async function executeJob(resource, meta, body, deps, now) {
             // brought their own. Falls back to the platform key when absent.
             const userApiKey = await getOwnerActiveApiKey(jobUserEmail);
             const engine = deps.engine ??
-                createAnthropicEngine({ apiKey: userApiKey ?? deps.apiKey });
+                (await resolveEngine({
+                    apiKey: userApiKey ?? deps.apiKey,
+                    appId: deps.appId,
+                }));
+            const model = deps.model ??
+                (await getStoredModelForEngine(engine, { appId: deps.appId })) ??
+                engine.defaultModel;
             // Create a chat thread for this run
             const threadTitle = `Job: ${jobName} — ${now.toLocaleDateString()}`;
             const thread = await createThread(jobUserEmail, { title: threadTitle });
@@ -319,7 +325,7 @@ async function executeJob(resource, meta, body, deps, now) {
             try {
                 await runAgentLoop({
                     engine,
-                    model: deps.model,
+                    model,
                     systemPrompt,
                     tools,
                     messages,

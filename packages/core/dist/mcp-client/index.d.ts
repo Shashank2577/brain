@@ -7,7 +7,9 @@
 export { loadMcpConfig, autoDetectMcpConfig, type McpConfig, type McpServerConfig, } from "./config.js";
 export { McpClientManager, parseMcpToolName, MCP_TOOL_PREFIX, type McpTool, type McpClientManagerOptions, } from "./manager.js";
 export { listRemoteServers, addRemoteServer, removeRemoteServer, validateRemoteUrl, normalizeServerName, mergedConfigKey, parseMergedKey, hashEmail, toHttpServerConfig, toHttpServerConfigAsync, materializeHeaders, type RemoteMcpScope, type StoredRemoteMcpServer, } from "./remote-store.js";
-export { mountMcpServersRoutes, buildMergedConfig } from "./routes.js";
+export { BUILTIN_MCP_CAPABILITIES, getBuiltinMcpCapability, isBuiltinMcpCapabilityAvailable, normalizeBuiltinMcpCapabilityIds, toBuiltinMcpServerConfig, type BuiltinMcpCapability, type BuiltinMcpCapabilityId, } from "./builtin-capabilities.js";
+export { builtinMcpCapabilitiesSettingsKey, listEnabledBuiltinMcpCapabilities, setEnabledBuiltinMcpCapabilities, setBuiltinMcpCapabilityEnabled, type StoredBuiltinMcpCapabilities, } from "./builtin-store.js";
+export { mountMcpServersRoutes, buildMergedConfig, builtinMergedConfigKey, type ClientBuiltinCapability, } from "./routes.js";
 export { mountMcpHubRoutes, listHubServers, getHubStatus, isHubServeEnabled, isHubConsumeEnabled, type HubServerRecord, type HubServersResponse, } from "./hub-routes.js";
 export { fetchHubServers } from "./hub-client.js";
 export { isMcpToolAllowedForRequest } from "./visibility.js";

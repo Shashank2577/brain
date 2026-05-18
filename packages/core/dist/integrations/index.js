@@ -1,5 +1,8 @@
 // Plugin
-export { createIntegrationsPlugin, defaultIntegrationsPlugin, } from "./plugin.js";
+export { createIntegrationsPlugin, defaultIntegrationsPlugin, enqueueRemoteCommand, } from "./plugin.js";
+export { listRemoteDevicesForOwner, revokeRemoteDeviceForOwner, unregisterRemoteDevice, } from "./remote-devices-store.js";
+export { listRemoteCommandsForOwner } from "./remote-commands-store.js";
+export { listRemotePushNotificationsForOwner, listRemotePushRegistrationsForOwner, queueRemotePushNotifications, toPublicRemotePushRegistration, unregisterRemotePushRegistrationForOwner, upsertRemotePushRegistration, } from "./remote-push-store.js";
 // Adapters
 export { slackAdapter } from "./adapters/slack.js";
 export { telegramAdapter } from "./adapters/telegram.js";

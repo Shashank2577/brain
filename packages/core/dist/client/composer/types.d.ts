@@ -35,4 +35,5 @@ export interface SlashCommand {
     icon?: string;
 }
 export type ComposerMode = "skill" | "job" | "automation" | "extension";
+export type AgentComposerLayoutVariant = "default" | "compact" | "hero";
 //# sourceMappingURL=types.d.ts.map

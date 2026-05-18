@@ -19,7 +19,7 @@ import { acceptPendingInvitationsForEmail } from "../org/accept-pending.js";
 import { autoJoinDomainMatchingOrgs } from "../org/auto-join-domain.js";
 import { saveOAuthTokens } from "../oauth-tokens/store.js";
 import { identify, track } from "../tracking/index.js";
-import { getDialect, getDatabaseUrl, getDatabaseAuthToken, } from "../db/client.js";
+import { getDialect, getDatabaseUrl, getDatabaseAuthToken, pgPoolOptions, neonPoolMax, } from "../db/client.js";
 import { pgTable, text as pgText, timestamp as pgTimestamp, boolean as pgBoolean, } from "drizzle-orm/pg-core";
 import { sqliteTable, text as sqliteText, integer as sqliteInteger, } from "drizzle-orm/sqlite-core";
 // ---------------------------------------------------------------------------
@@ -443,6 +443,31 @@ export async function getBetterAuth(config) {
 export function getBetterAuthSync() {
     return _auth;
 }
+/**
+ * Resolve Better Auth's internal adapter via the live instance's
+ * `$context`. The framework's narrowed `BetterAuthInstance` interface omits
+ * `$context`, but the underlying object created by `betterAuth(...)` always
+ * exposes it (see Better Auth's `Auth` type) — so this is a safe, typed
+ * accessor for the federated-SSO client. Returns `undefined` if the context
+ * shape is unexpected (older/newer Better Auth) so callers can fall back.
+ */
+export async function getBetterAuthInternalAdapter(config) {
+    const auth = (await getBetterAuth(config));
+    try {
+        const ctx = await auth.$context;
+        const ia = ctx?.internalAdapter;
+        if (ia &&
+            typeof ia.findUserByEmail === "function" &&
+            typeof ia.linkAccount === "function" &&
+            typeof ia.createUser === "function") {
+            return ia;
+        }
+    }
+    catch {
+        // Context resolution failed — caller falls back to the signup path.
+    }
+    return undefined;
+}
 /** Reset for testing */
 export async function resetBetterAuth() {
     _auth = undefined;
@@ -695,7 +720,14 @@ async function buildDatabaseConfig(dialect) {
         // Netlify Functions / Vercel / CF Workers when Neon's pooler is cold.
         if (isNeonUrl(url)) {
             const { Pool } = await import("@neondatabase/serverless");
-            _neonAuthPool = new Pool({ connectionString: url });
+            // Cap the auth pool the same way as the app pool. Better Auth runs a
+            // session lookup on essentially every authenticated request, so an
+            // un-capped pool here is a primary contributor to "Max client
+            // connections reached" across concurrent serverless instances.
+            _neonAuthPool = new Pool({
+                connectionString: url,
+                max: neonPoolMax(),
+            });
             const { drizzle } = await import("drizzle-orm/neon-serverless");
             const db = drizzle(_neonAuthPool, { schema: pgAuthSchema });
             const { drizzleAdapter } = await import("better-auth/adapters/drizzle");
@@ -704,15 +736,13 @@ async function buildDatabaseConfig(dialect) {
                 schema: pgAuthSchema,
             });
         }
-        // Non-Neon Postgres (Supabase, self-hosted, etc.) → postgres-js
+        // Non-Neon Postgres (Supabase, self-hosted, etc.) → postgres-js.
+        // pgPoolOptions caps this pool to a small size on serverless. Better Auth
+        // runs a session lookup on essentially every authenticated request, so an
+        // un-capped pool here is a primary contributor to "Max client connections
+        // reached" across concurrent serverless instances.
         const { default: postgres } = await import("postgres");
-        const sql = postgres(url, {
-            onnotice: () => { },
-            idle_timeout: 240,
-            max_lifetime: 60 * 30,
-            connect_timeout: 10,
-            ...(url.includes("supabase") ? { prepare: false } : {}),
-        });
+        const sql = postgres(url, pgPoolOptions(url));
         const { drizzle } = await import("drizzle-orm/postgres-js");
         const db = drizzle(sql, { schema: pgAuthSchema });
         const { drizzleAdapter } = await import("better-auth/adapters/drizzle");

@@ -11,6 +11,7 @@
  */
 export declare function getBuilderParentOrigin(): string | null;
 export declare function isInBuilderFrame(): boolean;
+export declare function shouldParentFrameOwnAgentPanel(): boolean;
 export declare function isTrustedBuilderMessage(event: MessageEvent): boolean;
 export interface BuilderChatMessage {
     message: string;

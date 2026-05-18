@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { agentNativePath } from "./api-path.js";
 import { bumpChangeVersion } from "./use-change-version.js";
+import { ensureDemoModeFetchInterceptor } from "../demo/fetch-interceptor.js";
 const POLL_ABORT_MIN_MS = 10_000;
 const SSE_FALLBACK_INTERVAL_MS = 15_000;
 function getPollAbortMs(interval) {
@@ -30,7 +31,10 @@ function eventVersion(event) {
     return typeof event.version === "number" ? event.version : 0;
 }
 function hasAppStateEvent(events, key) {
-    return events.some((event) => event.source === "app-state" && (event.key === key || event.key === "*"));
+    return events.some((event) => event.source === "app-state" &&
+        (event.key === key ||
+            event.key === "*" ||
+            (typeof event.key === "string" && event.key.startsWith(`${key}:`))));
 }
 async function fetchPollJson(pollUrl, since, interval) {
     const controller = typeof AbortController === "undefined" ? null : new AbortController();
@@ -84,6 +88,10 @@ export function useDbSync(options = {}) {
     const ignoreSourceRef = useRef(options.ignoreSource);
     ignoreSourceRef.current = options.ignoreSource;
     useEffect(() => {
+        // Universal demo-mode redaction for the UI. Idempotent + browser-only +
+        // a no-op until demo mode is on. Lives here because every template root
+        // already mounts useDbSync, so this needs zero per-template wiring.
+        ensureDemoModeFetchInterceptor();
         let versionRef = 0;
         let timer = null;
         let stopped = false;

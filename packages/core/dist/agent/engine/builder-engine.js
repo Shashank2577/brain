@@ -13,7 +13,7 @@
  * BUILDER_GATEWAY_BASE_URL.
  */
 import { engineMessagesToAnthropic, engineToolsToAnthropic, } from "./translate-anthropic.js";
-import { resolveBuilderAuthHeader, resolveBuilderCredential, getBuilderGatewayBaseUrl, } from "../../server/credential-provider.js";
+import { clearBuilderCredentialAuthFailure, resolveBuilderAuthHeader, resolveBuilderCredential, resolveBuilderCredentials, getBuilderGatewayBaseUrl, recordBuilderCredentialAuthFailure, } from "../../server/credential-provider.js";
 import { normalizeReasoningEffortForModel, } from "../../shared/reasoning-effort.js";
 import { LLM_MISSING_CREDENTIALS_ERROR_CODE, LLM_MISSING_CREDENTIALS_MESSAGE, } from "./credential-errors.js";
 import { BUILDER_MODEL_CONFIG } from "../model-config.js";
@@ -36,6 +36,7 @@ export const BUILDER_SUPPORTED_MODELS = BUILDER_MODEL_CONFIG.supportedModels;
 // streaming + the soft-timeout continuation path in run-loop-with-resume.
 const DEFAULT_BUILDER_GATEWAY_TIMEOUT_MS = 55_000;
 const MAX_BUILDER_GATEWAY_TIMEOUT_MS = 55_000;
+const DEFAULT_BUILDER_MAX_OUTPUT_TOKENS = 32768;
 const BUILDER_GATEWAY_NETWORK_ERROR_CODE = "builder_gateway_network_error";
 export const BUILDER_DEFAULT_MODEL = BUILDER_MODEL_CONFIG.defaultModel;
 /**
@@ -109,9 +110,7 @@ class BuilderEngine {
             messages,
             ...(opts.systemPrompt ? { system: opts.systemPrompt } : {}),
             ...(tools.length > 0 ? { tools } : {}),
-            ...(opts.maxOutputTokens !== undefined
-                ? { max_tokens: opts.maxOutputTokens }
-                : {}),
+            max_tokens: opts.maxOutputTokens ?? DEFAULT_BUILDER_MAX_OUTPUT_TOKENS,
             ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
         };
         const gatewayBaseUrl = getBuilderGatewayBaseUrl();
@@ -159,6 +158,22 @@ class BuilderEngine {
             if (!response.ok) {
                 yield* emitHttpError(response);
                 return;
+            }
+            // A successful gateway call proves the connected credentials are valid
+            // again. Clear any prior auth-failure marker so status / chat-card
+            // surfaces stop flagging the connection as broken. This is the only
+            // self-healing path for workspace/env-managed credentials, which never
+            // flow through writeBuilderCredentials.
+            try {
+                const creds = await resolveBuilderCredentials();
+                await clearBuilderCredentialAuthFailure({
+                    privateKey: creds.privateKey,
+                    publicKey: creds.publicKey,
+                });
+            }
+            catch {
+                // Marker clearing is best-effort; a stale marker just means the user
+                // sees "reconnect Builder" until the next successful call clears it.
             }
             const contentType = response.headers.get("content-type") ?? "";
             if (contentType.includes("text/html")) {
@@ -232,6 +247,7 @@ async function* emitHttpError(response) {
         return;
     }
     if (status === 401 || code === "unauthorized") {
+        await recordBuilderCredentialAuthFailure({ status, code, message });
         yield {
             type: "stop",
             reason: "error",
@@ -247,6 +263,7 @@ async function* emitHttpError(response) {
             lowerMessage.includes("invalid token") ||
             lowerMessage.includes("invalid_token") ||
             lowerMessage.includes("token invalid"))) {
+        await recordBuilderCredentialAuthFailure({ status, code, message });
         yield {
             type: "stop",
             reason: "error",
@@ -264,9 +281,20 @@ async function* emitHttpError(response) {
         };
         return;
     }
+    if (code === "rate_limit_exceeded") {
+        yield {
+            type: "stop",
+            reason: "error",
+            error: message,
+            errorCode: code,
+        };
+        return;
+    }
     if (status === 429 || code === "too_many_concurrent_requests") {
         // Include "too many requests" in the message so production-agent's
-        // isRetryableError picks it up and retries the turn.
+        // isRetryableError picks up transient concurrency throttles and retries
+        // the turn. Daily gateway caps use `rate_limit_exceeded` above and must
+        // not loop.
         yield {
             type: "stop",
             reason: "error",
@@ -418,6 +446,25 @@ async function* parseJsonlStream(reader, model, captureContext = {}) {
                             reason: "error",
                             error: `rate_limit exceeded: ${event.error ?? "upstream provider rate limited"}`,
                             errorCode: "rate_limited",
+                        };
+                    }
+                    else if (reason === "invalid_request") {
+                        // errorCode has no retry-trigger keywords, so isRetryableError
+                        // won't loop on broken history.
+                        const errMsg = event.error ||
+                            event.message ||
+                            "Builder gateway rejected the request as malformed.";
+                        const errCode = typeof event.errorCode === "string"
+                            ? event.errorCode
+                            : typeof event.code === "string"
+                                ? event.code
+                                : "invalid_request";
+                        console.warn(`[builder-engine] stop reason=invalid_request model=${model} code=${errCode} error=${errMsg}`);
+                        yield {
+                            type: "stop",
+                            reason: "error",
+                            error: errMsg,
+                            errorCode: errCode,
                         };
                     }
                     else if (reason === "error") {

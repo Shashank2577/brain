@@ -1,3 +1,11 @@
+import { type SecretScope } from "@agent-native/core/secrets";
+import { schema } from "../../db/index.js";
+export type VaultAccessMode = "all-apps" | "manual";
+export interface VaultAccessSettings {
+    mode: VaultAccessMode;
+    scope: "org" | "user";
+    scopeId: string;
+}
 /**
  * Caller-supplied access context for vault operations.
  *
@@ -17,6 +25,10 @@ export interface VaultCtx {
  * leaked rows across tenants when a misconfigured environment skipped auth.
  */
 export declare function requireVaultCtx(): VaultCtx;
+export declare function getVaultAccessSettings(): Promise<VaultAccessSettings>;
+export declare function setVaultAccessSettings(input: {
+    mode: VaultAccessMode;
+}): Promise<VaultAccessSettings>;
 export declare function recordVaultAudit(input: {
     action: string;
     secretId?: string | null;
@@ -149,6 +161,12 @@ export declare function createGrant(secretId: string, appId: string, ctx?: Vault
 }>;
 export declare function grantSecretsToApp(secretIds: string[], appId: string, ctx?: VaultCtx): Promise<{
     appId: string;
+    accessMode: "all-apps";
+    created: any[];
+    skipped: string[];
+} | {
+    appId: string;
+    accessMode: "manual";
     created: any[];
     skipped: string[];
 }>;
@@ -164,10 +182,43 @@ export declare function revokeGrant(grantId: string, ctx?: VaultCtx): Promise<{
     createdAt: number;
     updatedAt: number;
 }>;
+type VaultSecretRow = typeof schema.vaultSecrets.$inferSelect;
+export declare function credentialStoreScopeForVaultCtx(ctx: VaultCtx): {
+    scope: Extract<SecretScope, "org" | "workspace">;
+    scopeId: string;
+};
+export declare function syncSecretsToCredentialStore(secrets: VaultSecretRow[], ctx: VaultCtx): Promise<{
+    keys: string[];
+    scope: Extract<SecretScope, "org" | "workspace">;
+    scopeId: string;
+}>;
 export declare function syncGrantsToApp(appId: string, ctx?: VaultCtx): Promise<{
     appId: string;
+    accessMode: VaultAccessMode;
+    synced: number;
+    keys: any[];
+    credentialStore?: undefined;
+    envVars?: undefined;
+} | {
+    appId: string;
+    accessMode: VaultAccessMode;
     synced: number;
     keys: string[];
+    credentialStore: {
+        scope: "workspace" | "org";
+        scopeId: string;
+        synced: number;
+    };
+    envVars: {
+        status: "synced";
+        keys: string[];
+    } | {
+        status: "skipped";
+        reason: string;
+    } | {
+        status: "failed";
+        reason: string;
+    };
 }>;
 export declare function listRequests(filter?: {
     status?: string;
@@ -259,12 +310,16 @@ export interface AppIntegrations {
     url: string;
     color: string;
     integrations: IntegrationEntry[];
+    vaultAccessMode: VaultAccessMode;
     reachable: boolean;
 }
 export declare function listIntegrationsCatalog(): Promise<AppIntegrations[]>;
 export declare function listVaultOverview(): Promise<{
+    accessMode: VaultAccessMode;
     secretCount: number;
     activeGrantCount: number;
+    manualGrantCount: number;
     pendingRequestCount: number;
 }>;
+export {};
 //# sourceMappingURL=vault-store.d.ts.map

@@ -3,6 +3,7 @@
  */
 import { listAgentEngines, registerBuiltinEngines, detectEngineFromEnv, detectEngineFromUserSecrets, getAgentEngineEntry, isStoredEngineUsableForRequest, } from "../../agent/engine/index.js";
 import { DEFAULT_MODEL } from "../../agent/default-model.js";
+import { getAgentAppModelDefaultForCurrentRequest } from "../../agent/app-model-defaults.js";
 import { getSetting } from "../../settings/index.js";
 export const tool = {
     description: 'List all available AI agent engines (Anthropic, OpenAI, Gemini, Groq, etc.) and the currently selected engine. Use this to check what engines are available before calling manage-agent-engine with action="set".',
@@ -12,7 +13,7 @@ export const tool = {
         required: [],
     },
 };
-export async function run() {
+export async function run(args = {}) {
     registerBuiltinEngines();
     const engines = listAgentEngines();
     const currentSetting = await getSetting("agent-engine");
@@ -20,26 +21,36 @@ export async function run() {
         ? currentSetting
         : null;
     // Same priority chain resolveEngine uses after explicit request options:
-    // AGENT_ENGINE → Builder app_secrets → stored (if usable) → user BYOK
-    // app_secrets → env → anthropic. Gating stored on the request-aware helper
-    // keeps the picker in step with the runtime.
+    // AGENT_ENGINE → app default → Builder app_secrets → stored (if usable)
+    // → user BYOK app_secrets → env → anthropic. Gating stored/app defaults
+    // on the request-aware helper keeps the picker in step with the runtime.
     const storedEntry = typeof current?.engine === "string"
         ? getAgentEngineEntry(current.engine)
         : undefined;
     const storedUsable = !!storedEntry &&
         (await isStoredEngineUsableForRequest(current, storedEntry));
+    const appDefault = await getAgentAppModelDefaultForCurrentRequest(args.appId);
+    const appDefaultEntry = typeof appDefault?.engine === "string"
+        ? getAgentEngineEntry(appDefault.engine)
+        : undefined;
+    const appDefaultUsable = !!appDefault &&
+        !!appDefaultEntry &&
+        (await isStoredEngineUsableForRequest(appDefault, appDefaultEntry));
     const detectedFromUser = await detectEngineFromUserSecrets();
     const currentEntry = (process.env.AGENT_ENGINE
         ? getAgentEngineEntry(process.env.AGENT_ENGINE)
         : undefined) ??
+        (appDefaultUsable ? appDefaultEntry : undefined) ??
         (detectedFromUser?.name === "builder" ? detectedFromUser : undefined) ??
         (storedUsable ? storedEntry : undefined) ??
         detectedFromUser ??
         detectEngineFromEnv() ??
         undefined;
-    const currentModel = storedUsable && currentEntry?.name === current?.engine
-        ? current?.model
-        : undefined;
+    const currentModel = appDefaultUsable && currentEntry?.name === appDefault?.engine
+        ? appDefault?.model
+        : storedUsable && currentEntry?.name === current?.engine
+            ? current?.model
+            : undefined;
     const currentEngineName = currentEntry?.name ?? "anthropic";
     const result = {
         engines: engines.map((e) => ({

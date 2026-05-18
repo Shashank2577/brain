@@ -138,6 +138,14 @@ function preserveActionFlags(entry) {
     if (typeof entry.toolCallable === "boolean") {
         out.toolCallable = entry.toolCallable;
     }
+    if (entry.publicAgent &&
+        typeof entry.publicAgent === "object" &&
+        !Array.isArray(entry.publicAgent)) {
+        out.publicAgent = entry.publicAgent;
+    }
+    if (typeof entry.link === "function") {
+        out.link = entry.link;
+    }
     return out;
 }
 /**
@@ -419,6 +427,7 @@ export async function mergeCoreSharingActions(registry) {
             "change-appearance",
             () => import("../appearance/actions/change-appearance.js"),
         ],
+        ["toggle-demo-mode", () => import("../demo/actions/toggle-demo-mode.js")],
     ];
     for (const [name, loader] of entries) {
         if (registry[name])

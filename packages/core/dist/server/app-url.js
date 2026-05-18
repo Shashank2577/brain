@@ -4,18 +4,24 @@
  * outside the current request context.
  *
  * Resolution order:
- *   1. `APP_URL` env var — explicit override
- *   2. `BETTER_AUTH_URL` env var — Better Auth's canonical URL
- *   3. `WORKSPACE_GATEWAY_URL` — local multi-app workspace gateway
- *   4. First-party template `prodUrl` from the registry (matched by
+ *   1. Explicit public URL env vars (`APP_URL`, workspace OAuth origin,
+ *      `BETTER_AUTH_URL`) — operator overrides
+ *   2. Incoming request's origin (when an H3Event is available)
+ *   3. First-party template `prodUrl` from the registry (matched by
  *      package.json name) — lets deployed first-party apps (mail,
  *      calendar, analytics, …) use e.g. `analytics.agent-native.com`
  *      instead of their Netlify preview hostname.
- *   5. Incoming request's origin (when an H3Event is available)
- *   6. Platform-injected URL (Netlify `URL`, Vercel `VERCEL_URL`) —
+ *   4. Platform-injected URL (Netlify `URL`, Vercel `VERCEL_URL`) —
  *      automatically set by the hosting platform, so user-deployed apps
  *      get a real hostname in emails without needing to set `APP_URL`.
+ *   5. Public `WORKSPACE_GATEWAY_URL` — multi-app workspace gateway
+ *   6. Local `WORKSPACE_GATEWAY_URL` — local multi-app workspace gateway
  *   7. `http://localhost:3000`
+ *
+ * Older versions preferred `WORKSPACE_GATEWAY_URL` before platform URLs.
+ * That is fine for local development, but in hosted Builder Desktop sessions
+ * the gateway can be `127.0.0.1`, which must not become Better Auth's
+ * production base URL.
  */
 import { getRequestURL } from "h3";
 import path from "node:path";
@@ -49,6 +55,36 @@ function readPackageName() {
 function stripTrailingSlash(u) {
     return u.replace(/\/+$/, "");
 }
+function firstConfiguredUrl(keys) {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value)
+            return stripTrailingSlash(value);
+    }
+    return undefined;
+}
+function isLoopbackUrl(value) {
+    if (!value)
+        return false;
+    try {
+        const hostname = new URL(value).hostname.toLowerCase();
+        return (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1");
+    }
+    catch {
+        return false;
+    }
+}
+function workspaceGatewayUrl(options) {
+    const url = firstConfiguredUrl([
+        "WORKSPACE_GATEWAY_URL",
+        "VITE_WORKSPACE_GATEWAY_URL",
+    ]);
+    if (!url)
+        return undefined;
+    if (!options.allowLoopback && isLoopbackUrl(url))
+        return undefined;
+    return url;
+}
 /**
  * Look up the first-party template `prodUrl` for the current app based on
  * its `package.json` name. Returns undefined if the app isn't a known
@@ -62,12 +98,15 @@ export function getFirstPartyProdUrl() {
     return t?.prodUrl;
 }
 export function getAppProductionUrl(event) {
-    const envUrl = process.env.APP_URL || process.env.BETTER_AUTH_URL;
+    const envUrl = firstConfiguredUrl([
+        "APP_URL",
+        "WORKSPACE_OAUTH_ORIGIN",
+        "VITE_WORKSPACE_OAUTH_ORIGIN",
+        "BETTER_AUTH_URL",
+        "VITE_BETTER_AUTH_URL",
+    ]);
     if (envUrl)
-        return stripTrailingSlash(envUrl);
-    if (process.env.WORKSPACE_GATEWAY_URL) {
-        return stripTrailingSlash(process.env.WORKSPACE_GATEWAY_URL);
-    }
+        return envUrl;
     // Prefer the incoming request's origin when we have one — for local dev
     // this is `http://localhost:3000`, which keeps Better Auth from setting
     // `Secure` cookies on plain-HTTP dev servers.
@@ -101,7 +140,15 @@ export function getAppProductionUrl(event) {
         const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
         if (vercelUrl)
             return `https://${stripTrailingSlash(vercelUrl)}`;
+        const publicWorkspaceGateway = workspaceGatewayUrl({
+            allowLoopback: false,
+        });
+        if (publicWorkspaceGateway)
+            return publicWorkspaceGateway;
     }
+    const localWorkspaceGateway = workspaceGatewayUrl({ allowLoopback: true });
+    if (localWorkspaceGateway)
+        return localWorkspaceGateway;
     return "http://localhost:3000";
 }
 //# sourceMappingURL=app-url.js.map

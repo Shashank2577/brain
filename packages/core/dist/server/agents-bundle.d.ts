@@ -29,7 +29,7 @@ export interface Skill {
     /**
      * Filesystem path to the skill directory, relative to the template root
      * (e.g. `.agents/skills/create-deck`). The agent can read any file here via
-     * shell in dev — skills are folders, not single files, and may contain
+     * bash in dev — skills are folders, not single files, and may contain
      * supporting assets, scripts, or additional markdown.
      */
     dir: string;
@@ -104,9 +104,9 @@ export declare function loadAgentsBundle(): Promise<AgentsBundle>;
  * file plus any number of supporting files (additional markdown, examples,
  * images, scripts). This block lists what's available and how to read them.
  *
- * In dev mode the agent has shell access and reads skills via `cat` — exactly
+ * In dev mode the agent has bash access and reads skills via `cat` — exactly
  * like running `claude` locally in the repo. In production mode the agent has
- * no shell; templates that need skill content at runtime should inline the
+ * no bash; templates that need skill content at runtime should inline the
  * critical parts directly in `AGENTS.md`.
  */
 export declare function generateSkillsPromptBlock(bundle: AgentsBundle): string;

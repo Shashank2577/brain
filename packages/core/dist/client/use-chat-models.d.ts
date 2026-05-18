@@ -21,6 +21,11 @@ interface Options {
      * page loads. Pass `null` to disable persistence.
      */
     storageKey?: string | null;
+    /**
+     * Disable server-backed model discovery for hosts that provide their own
+     * model list/state, such as Electron Code.
+     */
+    enabled?: boolean;
 }
 /**
  * Fetches available engines/models from the agent server and exposes the same
@@ -28,6 +33,6 @@ interface Options {
  * the Dispatch homepage hero composer that need an identical model picker
  * without mounting the full tabbed chat.
  */
-export declare function useChatModels({ storageKey, }?: Options): UseChatModelsResult;
+export declare function useChatModels({ storageKey, enabled, }?: Options): UseChatModelsResult;
 export {};
 //# sourceMappingURL=use-chat-models.d.ts.map

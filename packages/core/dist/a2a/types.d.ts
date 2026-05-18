@@ -1,3 +1,4 @@
+import type { PublicAgentActionConfig } from "../action.js";
 export interface TextPart {
     type: "text";
     text: string;
@@ -47,6 +48,11 @@ export interface AgentSkill {
     description: string;
     tags?: string[];
     examples?: string[];
+    public?: boolean;
+    readOnly?: boolean;
+    requiresAuth?: boolean;
+    isConsequential?: boolean;
+    publicAgent?: PublicAgentActionConfig;
 }
 export interface AgentCapabilities {
     streaming?: boolean;
@@ -107,6 +113,8 @@ export interface A2AConfig {
     description: string;
     version?: string;
     skills: AgentSkill[];
+    /** If true, public agent-card discovery includes only explicit public-safe skills. */
+    publicSkillsOnly?: boolean;
     handler?: A2AHandler;
     apiKeyEnv?: string;
     streaming?: boolean;

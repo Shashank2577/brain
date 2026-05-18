@@ -18,6 +18,8 @@ export interface WebhookHandlerOptions {
         name: string;
         config: Record<string, unknown>;
     };
+    /** App/template id used for org-scoped per-app model defaults. */
+    appId?: string;
     /** Thread owner for personal/shared resource loading */
     ownerEmail: string;
     /**

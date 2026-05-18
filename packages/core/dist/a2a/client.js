@@ -35,6 +35,9 @@ export async function signA2AToken(email, orgDomain, orgSecret, options) {
         process.env.BETTER_AUTH_URL ||
         "http://localhost:3000";
     return new jose.SignJWT({
+        ...(options?.extraClaims ?? {}),
+        // `sub` / `org_domain` are spread AFTER extraClaims so a caller-supplied
+        // map can never override the verified identity claims.
         sub: email,
         ...(orgDomain ? { org_domain: orgDomain } : {}),
     })

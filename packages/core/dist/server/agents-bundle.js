@@ -242,9 +242,9 @@ export async function loadAgentsBundle() {
  * file plus any number of supporting files (additional markdown, examples,
  * images, scripts). This block lists what's available and how to read them.
  *
- * In dev mode the agent has shell access and reads skills via `cat` — exactly
+ * In dev mode the agent has bash access and reads skills via `cat` — exactly
  * like running `claude` locally in the repo. In production mode the agent has
- * no shell; templates that need skill content at runtime should inline the
+ * no bash; templates that need skill content at runtime should inline the
  * critical parts directly in `AGENTS.md`.
  */
 export function generateSkillsPromptBlock(bundle) {
@@ -260,9 +260,9 @@ export function generateSkillsPromptBlock(bundle) {
     return `<skills>
 The following skills live in the repo at \`.agents/skills/<name>/\`. Each skill is a folder containing a \`SKILL.md\` entry file and sometimes supporting files. Read a skill BEFORE starting a task it applies to.
 
-To read a skill in dev mode (when you have shell access):
-  \`shell(command="cat .agents/skills/<name>/SKILL.md")\`
-  \`shell(command="ls .agents/skills/<name>/")\` to see all files in the folder
+To read a skill in dev mode (when you have bash access):
+  \`bash(command="cat .agents/skills/<name>/SKILL.md")\`
+  \`bash(command="ls .agents/skills/<name>/")\` to see all files in the folder
 
 Available skills:
 ${lines.join("\n")}

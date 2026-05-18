@@ -2,14 +2,13 @@ import { randomUUID } from "node:crypto";
 import { defineEventHandler, getMethod, setResponseStatus, setResponseHeader, } from "h3";
 import { readBody } from "../server/h3-helpers.js";
 import { getSession } from "../server/auth.js";
-import { recordChange } from "../server/poll.js";
 import { runWithRequestContext, getRequestOrgId, } from "../server/request-context.js";
 import { getOrgContext } from "../org/context.js";
 import { getDbExec, isPostgres } from "../db/client.js";
 import { listExtensions, getExtension, createExtension, updateExtension, updateExtensionContent, deleteExtension, hideExtension, unhideExtension, ensureExtensionsTables, } from "./store.js";
 import { buildExtensionHtml, EXTENSION_IFRAME_CSP } from "./html-shell.js";
 import { getThemeVars } from "./theme.js";
-import { resolveKeyReferences, validateUrlAllowlist, getKeyAllowlist, } from "../secrets/substitution.js";
+import { resolveKeyReferencesWithRequestScopes, validateUrlAllowlist, getResolvedKeyAllowlist, } from "../secrets/substitution.js";
 import { collectSecretValues, normalizeExtensionProxyMethod, readResponseTextWithLimit, redactSecrets, redactString, sanitizeOutboundHeaders, } from "./proxy-security.js";
 import { createSsrfSafeDispatcher, isBlockedExtensionUrlWithDns, } from "./url-safety.js";
 import { ForbiddenError, resolveAccess } from "../sharing/access.js";
@@ -36,7 +35,7 @@ export function createExtensionsHandler() {
         }
         const orgCtx = await getOrgContext(event).catch(() => null);
         const userEmail = session.email;
-        const orgId = orgCtx?.orgId ?? undefined;
+        const orgId = orgCtx?.orgId ?? session.orgId ?? undefined;
         try {
             return await runWithRequestContext({ userEmail, orgId }, async () => {
                 await ensureExtensionsTables();
@@ -96,7 +95,6 @@ async function dispatch(event, method, parts, userEmail) {
             return { error: "name is required" };
         }
         const extension = await createExtension(body);
-        recordChange({ source: "action", type: "change" });
         setResponseStatus(event, 201);
         return extension;
     }
@@ -151,7 +149,6 @@ async function dispatch(event, method, parts, userEmail) {
             setResponseStatus(event, 404);
             return { error: "Extension not found" };
         }
-        recordChange({ source: "action", type: "change" });
         return { ok: true, hidden: true };
     }
     // POST /:id/unhide — restore an extension hidden by the current user.
@@ -161,7 +158,6 @@ async function dispatch(event, method, parts, userEmail) {
             setResponseStatus(event, 404);
             return { error: "Extension not found" };
         }
-        recordChange({ source: "action", type: "change" });
         return { ok: true, hidden: false };
     }
     // PUT /:id
@@ -189,7 +185,6 @@ async function dispatch(event, method, parts, userEmail) {
             setResponseStatus(event, 404);
             return { error: "Extension not found" };
         }
-        recordChange({ source: "action", type: "change" });
         return result;
     }
     // DELETE /:id
@@ -199,7 +194,6 @@ async function dispatch(event, method, parts, userEmail) {
             setResponseStatus(event, 404);
             return { error: "Extension not found" };
         }
-        recordChange({ source: "action", type: "change" });
         return { ok: true };
     }
     setResponseStatus(event, 404);
@@ -377,22 +371,22 @@ async function handleProxy(event, userEmail) {
     let resolvedUrl = rawUrl;
     let resolvedHeaders = JSON.stringify(rawHeaders);
     let resolvedBody = rawBody;
-    const allUsedKeys = [];
     const allSecretValues = [];
+    const allResolvedKeys = [];
     try {
-        const urlResult = await resolveKeyReferences(rawUrl, "user", userEmail);
+        const urlResult = await resolveKeyReferencesWithRequestScopes(rawUrl, userEmail);
         resolvedUrl = urlResult.resolved;
-        allUsedKeys.push(...urlResult.usedKeys);
         allSecretValues.push(...urlResult.secretValues);
-        const headerResult = await resolveKeyReferences(resolvedHeaders, "user", userEmail);
+        allResolvedKeys.push(...(urlResult.resolvedKeys ?? []));
+        const headerResult = await resolveKeyReferencesWithRequestScopes(resolvedHeaders, userEmail);
         resolvedHeaders = headerResult.resolved;
-        allUsedKeys.push(...headerResult.usedKeys);
         allSecretValues.push(...headerResult.secretValues);
+        allResolvedKeys.push(...(headerResult.resolvedKeys ?? []));
         if (rawBody) {
-            const bodyResult = await resolveKeyReferences(typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody), "user", userEmail);
+            const bodyResult = await resolveKeyReferencesWithRequestScopes(typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody), userEmail);
             resolvedBody = bodyResult.resolved;
-            allUsedKeys.push(...bodyResult.usedKeys);
             allSecretValues.push(...bodyResult.secretValues);
+            allResolvedKeys.push(...(bodyResult.resolvedKeys ?? []));
         }
     }
     catch (err) {
@@ -404,12 +398,16 @@ async function handleProxy(event, userEmail) {
         setResponseStatus(event, 403);
         return { error: "Requests to private/internal addresses are not allowed" };
     }
-    for (const keyName of new Set(allUsedKeys)) {
-        const allowlist = await getKeyAllowlist(keyName, "user", userEmail);
+    const uniqueResolvedKeys = new Map(allResolvedKeys.map((ref) => [
+        `${ref.name}:${ref.scope}:${ref.scopeId}`,
+        ref,
+    ]));
+    for (const keyRef of uniqueResolvedKeys.values()) {
+        const allowlist = await getResolvedKeyAllowlist(keyRef);
         if (!validateUrlAllowlist(resolvedUrl, allowlist)) {
             setResponseStatus(event, 403);
             return {
-                error: `Key "${keyName}" is not allowed for this URL origin`,
+                error: `Key "${keyRef.name}" is not allowed for this URL origin`,
             };
         }
     }
@@ -466,12 +464,12 @@ async function handleProxy(event, userEmail) {
                 return { error: "Redirect to private/internal address blocked" };
             }
             if (redirectUrl) {
-                for (const keyName of new Set(allUsedKeys)) {
-                    const allowlist = await getKeyAllowlist(keyName, "user", userEmail);
+                for (const keyRef of uniqueResolvedKeys.values()) {
+                    const allowlist = await getResolvedKeyAllowlist(keyRef);
                     if (!validateUrlAllowlist(redirectUrl, allowlist)) {
                         setResponseStatus(event, 403);
                         return {
-                            error: `Redirect URL is not allowed for key "${keyName}"`,
+                            error: `Redirect URL is not allowed for key "${keyRef.name}"`,
                         };
                     }
                 }

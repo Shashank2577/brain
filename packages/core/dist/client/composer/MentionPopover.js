@@ -118,7 +118,7 @@ export const MentionPopover = forwardRef(function MentionPopover(props, ref) {
     // Reset selection when items change
     useEffect(() => {
         setSelectedIndex(0);
-    }, [mentionItems, skills, query]);
+    }, [commands, mentionItems, skills, query]);
     // Scroll selected item into view
     useEffect(() => {
         const container = listRef.current;
@@ -147,7 +147,7 @@ export const MentionPopover = forwardRef(function MentionPopover(props, ref) {
     }));
     if (!position)
         return null;
-    const content = (_jsxs(_Fragment, { children: [_jsx("div", { className: "fixed inset-0 z-[9998]", onClick: onClose }), _jsx("div", { className: "fixed z-[9999] w-[320px] overflow-y-auto rounded-lg border border-border bg-popover shadow-lg", style: {
+    const content = (_jsxs(_Fragment, { children: [_jsx("div", { className: "fixed inset-0 z-[9998]", onClick: onClose }), _jsx("div", { "data-agent-native-composer-popover": "true", className: "fixed z-[9999] w-[320px] overflow-y-auto rounded-lg border border-border bg-popover shadow-lg", style: {
                     bottom: `calc(100vh - ${position.top}px + 4px)`,
                     left: Math.max(8, Math.min(position.left, window.innerWidth - 336)),
                     maxHeight: Math.min(320, position.top - 8),

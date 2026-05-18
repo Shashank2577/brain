@@ -47,9 +47,11 @@ async function fetchJson(url, init) {
 }
 function buildNewWorkspaceAppPrompt(input) {
     const keyList = input.selectedKeys.join(", ");
-    const grantRequest = keyList
-        ? `Requested Dispatch vault key grants for this app: ${keyList}`
-        : `Requested Dispatch vault key grants for this app: none`;
+    const grantRequest = input.vaultAccessMode === "all-apps"
+        ? `Dispatch vault access: all saved vault keys are available to every workspace app by default. No per-app vault grants are needed.`
+        : keyList
+            ? `Requested Dispatch vault key grants for this app: ${keyList}`
+            : `Requested Dispatch vault key grants for this app: none`;
     const resourceList = input.selectedResources.length
         ? input.selectedResources
             .map((resource) => `- ${resource.name} (${resource.kind}, ${resource.path})`)
@@ -61,9 +63,11 @@ function buildNewWorkspaceAppPrompt(input) {
         ``,
         `Suggested app name: ${input.appId} (you may adjust the slug if it conflicts)`,
         `User prompt: ${input.prompt.trim()}`,
+        `Generate a concise one-sentence app description from the user prompt before coding; save it in apps/${input.appId}/package.json "description" so Dispatch and A2A can describe the app.`,
         `If the user mentions a product or company such as Granola, Loom, Superhuman, Linear, or Notion, treat it as product inspiration unless they explicitly ask to connect to that service. Do not invent or require third-party API keys like GRANOLA_API_KEY just because a product is named.`,
         grantRequest,
         `Requested Dispatch workspace resources for this app:\n${resourceList}`,
+        `Dispatch workspace resources with scope=all are inherited workspace context. Do not copy or sync them into the new app; every workspace app reads them at runtime and may override with app shared or personal resources.`,
         ``,
         `Pick a starter template that fits the user's prompt — analytics, calendar, content, design, dispatch, forms, mail, slides, clips, or starter when none of the others fit.`,
         `Use the workspace app layout: create it under apps/${input.appId}, mount it at /${input.appId}, keep it on the shared workspace database/hosting model, and avoid table-name collisions by namespacing any new domain tables to the app.`,
@@ -74,17 +78,19 @@ function buildNewWorkspaceAppPrompt(input) {
         `Use relative workspace links like /${input.appId}. Do not hardcode localhost, 127.0.0.1, 8080, 8100, or any dev port; the active workspace gateway/browser origin owns the port.`,
         `Use the framework/template UI stack: shadcn/ui components and @tabler/icons-react. Do not add lucide-react or another icon library for standard UI.`,
         `Ensure the React Router client entry preserves APP_BASE_PATH/VITE_APP_BASE_PATH via appBasePath().`,
-        keyList
-            ? `After the app exists, grant the selected Dispatch vault keys to appId "${input.appId}" and sync them once the app server is available. Treat these as requested grants, not active grants before creation succeeds.`
-            : `Do not grant any Dispatch vault keys unless the user asks later.`,
+        input.vaultAccessMode === "all-apps"
+            ? `Do not create per-app Dispatch vault grants unless the workspace switches vault access to manual or the user explicitly asks for manual grants.`
+            : keyList
+                ? `After the app exists, grant the selected Dispatch vault keys to appId "${input.appId}" and sync them once the app server is available. Treat these as requested grants, not active grants before creation succeeds.`
+                : `Do not grant any Dispatch vault keys unless the user asks later.`,
         input.selectedResources.length
-            ? `After the app exists, grant the selected Dispatch workspace resources to appId "${input.appId}" and sync them once the app server is available. Add a short note to apps/${input.appId}/AGENTS.md telling the app agent to read relevant shared resources under context/ or the selected resource paths before doing GTM/domain work.`
-            : `Do not grant any Dispatch workspace resources unless the user asks later.`,
+            ? `After the app exists, grant the selected Dispatch workspace resources to appId "${input.appId}". Do not sync all-app workspace resources; they are inherited.`
+            : `Do not grant any selected-only Dispatch workspace resources unless the user asks later.`,
         ``,
         `App readiness requirements before handing off:`,
-        `- Ensure apps/${input.appId}/package.json exists with displayName/name metadata so Dispatch and the workspace gateway discover it from the filesystem. There is no separate workspace app registry to edit.`,
+        `- Ensure apps/${input.appId}/package.json exists with displayName/name and a concise description so Dispatch and the workspace gateway discover it from the filesystem. There is no separate workspace app registry to edit.`,
         `- Update the app manifest/package/deploy metadata needed by the existing workspace deployment model; do not leave the app relying only on local discovery.`,
-        `- Verify the app's agent card/A2A metadata is ready so Dispatch can discover and delegate to the app after deployment.`,
+        `- Verify the app's agent card/A2A metadata is ready so Dispatch can discover and delegate to the app after deployment. Every sibling workspace app is available over A2A by default through call-agent, with names and descriptions from the workspace app registry.`,
         `- Include a final verification note covering filesystem discovery, manifest/deploy metadata, relative same-origin routing, and agent-card readiness.`,
         `When it is ready, start or update the workspace dev server and navigate the user to /${input.appId}.`,
     ].join("\n");
@@ -94,6 +100,7 @@ export function NewWorkspaceAppFlow({ sourceApp = "starter", className = "", dis
     const [selectedResourceIds, setSelectedResourceIds] = useState([]);
     const [secrets, setSecrets] = useState([]);
     const [resources, setResources] = useState([]);
+    const [vaultAccessMode, setVaultAccessMode] = useState("all-apps");
     const [secretsError, setSecretsError] = useState(null);
     const [resourcesError, setResourcesError] = useState(null);
     const [statusMessage, setStatusMessage] = useState(null);
@@ -106,6 +113,7 @@ export function NewWorkspaceAppFlow({ sourceApp = "starter", className = "", dis
     useEffect(() => {
         let cancelled = false;
         const secretsUrl = actionUrl(effectiveDispatchBasePath, "list-vault-secret-options");
+        const vaultAccessUrl = actionUrl(effectiveDispatchBasePath, "get-vault-access-settings");
         const resourcesUrl = actionUrl(effectiveDispatchBasePath, "list-workspace-resource-options");
         fetchJson(secretsUrl)
             .then((data) => {
@@ -119,6 +127,17 @@ export function NewWorkspaceAppFlow({ sourceApp = "starter", className = "", dis
                 return;
             setSecrets([]);
             setSecretsError(err?.message || "Could not load Dispatch keys");
+        });
+        fetchJson(vaultAccessUrl)
+            .then((data) => {
+            if (cancelled)
+                return;
+            setVaultAccessMode(data?.mode === "manual" ? "manual" : "all-apps");
+        })
+            .catch(() => {
+            if (cancelled)
+                return;
+            setVaultAccessMode("manual");
         });
         fetchJson(resourcesUrl)
             .then((data) => {
@@ -139,9 +158,11 @@ export function NewWorkspaceAppFlow({ sourceApp = "starter", className = "", dis
     }, [effectiveDispatchBasePath]);
     const selectedSecrets = useMemo(() => secrets.filter((secret) => selectedSecretIds.includes(secret.id)), [secrets, selectedSecretIds]);
     const selectedResources = useMemo(() => resources.filter((resource) => selectedResourceIds.includes(resource.id)), [resources, selectedResourceIds]);
-    const selectedSecretLabel = selectedSecretIds.length === 0
-        ? "No keys selected"
-        : `${selectedSecretIds.length} key${selectedSecretIds.length === 1 ? "" : "s"} selected`;
+    const selectedSecretLabel = vaultAccessMode === "all-apps"
+        ? "All keys included"
+        : selectedSecretIds.length === 0
+            ? "No keys selected"
+            : `${selectedSecretIds.length} key${selectedSecretIds.length === 1 ? "" : "s"} selected`;
     const selectedResourceLabel = selectedResourceIds.length === 0
         ? "No resources selected"
         : `${selectedResourceIds.length} resource${selectedResourceIds.length === 1 ? "" : "s"} selected`;
@@ -158,8 +179,11 @@ export function NewWorkspaceAppFlow({ sourceApp = "starter", className = "", dis
         const message = buildNewWorkspaceAppPrompt({
             appId,
             prompt,
-            selectedKeys: selectedSecrets.map((s) => s.credentialKey),
+            selectedKeys: vaultAccessMode === "manual"
+                ? selectedSecrets.map((s) => s.credentialKey)
+                : [],
             selectedResources,
+            vaultAccessMode,
         });
         setIsSubmitting(true);
         setStatusMessage(null);
@@ -180,7 +204,7 @@ export function NewWorkspaceAppFlow({ sourceApp = "starter", className = "", dis
                     body: JSON.stringify({
                         prompt,
                         appId,
-                        secretIds: selectedSecretIds,
+                        secretIds: vaultAccessMode === "manual" ? selectedSecretIds : [],
                         resourceIds: selectedResourceIds,
                     }),
                 });
@@ -211,7 +235,7 @@ export function NewWorkspaceAppFlow({ sourceApp = "starter", className = "", dis
             ? current.filter((existing) => existing !== id)
             : [...current, id]);
     }
-    return (_jsx("section", { className: `mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6 ${className}`, children: _jsxs("div", { className: "grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]", children: [_jsxs("div", { className: "flex flex-col gap-3", children: [_jsx(PromptComposer, { autoFocus: true, disabled: isSubmitting, placeholder: "Describe the app your teammate should be able to use...", draftScope: "dispatch:new-app", preserveDraftOnSubmit: true, onSubmit: (text) => submit(text) }), statusMessage ? (_jsxs("div", { className: "rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground", children: [statusMessage, branchUrl ? (_jsxs("a", { href: branchUrl, target: "_blank", rel: "noreferrer", className: "ml-2 inline-flex items-center gap-1 font-medium text-foreground underline", children: ["Open branch ", _jsx(IconArrowUpRight, { className: "h-3 w-3" })] })) : null] })) : null] }), _jsxs("aside", { className: "overflow-hidden rounded-lg border border-border bg-card", children: [_jsx("div", { className: "border-b border-border px-4 py-3", children: _jsxs("div", { className: "flex items-center justify-between gap-3", children: [_jsxs("div", { className: "flex items-center gap-2 text-sm font-medium", children: [_jsx(IconKey, { className: "h-4 w-4" }), "Dispatch keys"] }), _jsx("span", { className: "shrink-0 rounded border border-border bg-background/40 px-2 py-0.5 text-[11px] text-muted-foreground", children: selectedSecretLabel })] }) }), _jsx("div", { className: "max-h-[220px] space-y-2 overflow-y-auto p-3", children: secretsError ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: secretsError })) : secrets.length === 0 ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: "No Dispatch vault keys found yet." })) : (secrets.map((secret) => {
+    return (_jsx("section", { className: `mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6 ${className}`, children: _jsxs("div", { className: "grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]", children: [_jsxs("div", { className: "flex flex-col gap-3", children: [_jsx(PromptComposer, { autoFocus: true, disabled: isSubmitting, placeholder: "Describe the app your teammate should be able to use...", draftScope: "dispatch:new-app", preserveDraftOnSubmit: true, onSubmit: (text) => submit(text) }), statusMessage ? (_jsxs("div", { className: "rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground", children: [statusMessage, branchUrl ? (_jsxs("a", { href: branchUrl, target: "_blank", rel: "noreferrer", className: "ml-2 inline-flex items-center gap-1 font-medium text-foreground underline", children: ["Open branch ", _jsx(IconArrowUpRight, { className: "h-3 w-3" })] })) : null] })) : null] }), _jsxs("aside", { className: "overflow-hidden rounded-lg border border-border bg-card", children: [_jsx("div", { className: "border-b border-border px-4 py-3", children: _jsxs("div", { className: "flex items-center justify-between gap-3", children: [_jsxs("div", { className: "flex items-center gap-2 text-sm font-medium", children: [_jsx(IconKey, { className: "h-4 w-4" }), "Dispatch keys"] }), _jsx("span", { className: "shrink-0 rounded border border-border bg-background/40 px-2 py-0.5 text-[11px] text-muted-foreground", children: selectedSecretLabel })] }) }), _jsx("div", { className: "max-h-[220px] space-y-2 overflow-y-auto p-3", children: vaultAccessMode === "all-apps" ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: "Every saved Dispatch vault key is available to new apps." })) : secretsError ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: secretsError })) : secrets.length === 0 ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: "No Dispatch vault keys found yet." })) : (secrets.map((secret) => {
                                 const selected = selectedSecretIds.includes(secret.id);
                                 return (_jsxs("div", { className: `group rounded-md border text-sm transition ${selected
                                         ? "border-primary/45 bg-primary/5 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"

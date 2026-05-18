@@ -26,6 +26,7 @@ const POSTGRES_DEPENDENCY_VERSION = "^3.4.9";
 export function workspacifyApp(opts) {
     const { appDir, workspaceCoreName } = opts;
     const coreDependencyVersion = opts.coreDependencyVersion ?? "latest";
+    const dispatchDependencyVersion = opts.dispatchDependencyVersion ?? "latest";
     // 1) Rewrite package.json to add the workspace core dep and resolve
     //    @agent-native/core / @agent-native/dispatch workspace:* refs to
     //    published package ranges. Other workspace:* deps (e.g.
@@ -49,7 +50,7 @@ export function workspacifyApp(opts) {
                             deps[key] = coreDependencyVersion;
                         }
                         if (key === "@agent-native/dispatch") {
-                            deps[key] = "latest";
+                            deps[key] = dispatchDependencyVersion;
                         }
                     }
                 }

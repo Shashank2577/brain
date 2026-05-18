@@ -136,6 +136,9 @@ export function queueCodeAgentFollowUp(input) {
         eventId: input.eventId,
         permissionMode: input.permissionMode,
         source: input.source,
+        ...(input.attachments && input.attachments.length > 0
+            ? { attachments: input.attachments }
+            : {}),
     };
     const updated = updateCodeAgentRunRecord(input.runId, (record) => ({
         metadata: {

@@ -1,5 +1,13 @@
 import type { IntegrationsPluginOptions } from "./types.js";
 type NitroPluginDef = (nitroApp: any) => void | Promise<void>;
+type RemoteCodeCommandEnvelope = {
+    kind?: unknown;
+    ownerEmail?: unknown;
+    orgId?: unknown;
+    command?: unknown;
+    source?: unknown;
+};
+export declare function enqueueRemoteCommand(envelope: RemoteCodeCommandEnvelope): Promise<Record<string, unknown>>;
 /**
  * Creates a Nitro plugin that mounts messaging platform integration webhook routes.
  *

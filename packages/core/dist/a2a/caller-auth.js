@@ -36,7 +36,7 @@ export async function resolveA2ACallerAuth(options) {
     if (options?.includeGoogleToken) {
         await attachGoogleTokenMetadata(metadata, userEmail);
     }
-    return { apiKey, userEmail, orgDomain, orgSecret, metadata };
+    return { apiKey, userEmail, orgId, orgDomain, orgSecret, metadata };
 }
 async function attachGoogleTokenMetadata(metadata, userEmail) {
     if (process.env.NODE_ENV !== "production" || !userEmail)

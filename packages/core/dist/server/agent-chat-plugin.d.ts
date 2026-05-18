@@ -2,6 +2,12 @@ import { type ActionEntry } from "../agent/production-agent.js";
 import type { AgentChatAttachment, AgentChatEvent, AgentChatReference, MentionProvider } from "../agent/types.js";
 import { McpClientManager } from "../mcp-client/index.js";
 import { type A2AArtifactResponseOptions, type A2AToolResultSummary } from "../a2a/artifact-response.js";
+export declare function buildPublicAgentA2ASkills(actions: Record<string, ActionEntry>): Array<{
+    id: string;
+    name: string;
+    description: string;
+    publicAgent: ActionEntry["publicAgent"];
+}>;
 export declare function assembleA2AFinalResponse(events: readonly AgentChatEvent[], toolResults: readonly A2AToolResultSummary[], options?: A2AArtifactResponseOptions & {
     event?: any;
 }): {
@@ -122,10 +128,10 @@ export interface AgentChatPluginOptions {
      *
      * When set, the same lean prompt is used in both dev and prod modes. In
      * dev mode the tool registry is ALSO swapped to the template's actions
-     * (same set as prod) — the dev-only shell/db-exec/file-system tools
+     * (same set as prod) — the dev-only bash/db-exec/file-system tools
      * and the resource/docs/chat/team/job/browser scripts are dropped. The
-     * lean system prompt has no shell-usage guidance, so routing actions
-     * through shell would break. If you need the full dev tool surface,
+     * lean system prompt has no bash-usage guidance, so routing actions
+     * through bash would break. If you need the full dev tool surface,
      * leave this off.
      */
     leanPrompt?: boolean;
@@ -147,7 +153,7 @@ export interface AgentChatPluginOptions {
     /**
      * In dev mode, register the template's actions as native tools the agent
      * can call directly with structured JSON args — skipping the default
-     * `shell(command="pnpm action <name> ...")` indirection.
+     * `bash(command="pnpm action <name> ...")` indirection.
      *
      * The default dev behavior shells out because it "mirrors how Claude Code
      * works locally" and reduces empty-object tool calls for templates with
@@ -157,18 +163,54 @@ export interface AgentChatPluginOptions {
      * on the way out.
      *
      * Set to `true` to get the same tool surface in dev that production uses.
-     * `leanPrompt: true` implies this already (lean mode has no shell-usage
+     * `leanPrompt: true` implies this already (lean mode has no bash-usage
      * guidance, so actions must be native). Set this flag without
      * `leanPrompt` when you want native actions AND the full system prompt.
      *
      * Defaults to `false`.
      */
     nativeActionsInDev?: boolean;
+    /**
+     * Optional A2A-only deterministic response path. Runs after inbound A2A text
+     * and user context are resolved, but before an agent engine/model is loaded.
+     * Return a message to complete the A2A task without invoking the LLM, or
+     * null/undefined to continue through the normal agent loop.
+     */
+    a2aMessageFallback?: (details: {
+        message: import("../a2a/types.js").Message;
+        text: string;
+        context: import("../a2a/types.js").A2AHandlerContext;
+        userEmail: string | undefined;
+    }) => import("../a2a/types.js").Message | string | null | undefined | Promise<import("../a2a/types.js").Message | string | null | undefined>;
 }
+/**
+ * Pre-load the agent's context: AGENTS.md (workspace/template/runtime
+ * instructions), the skills index, shared LEARNINGS.md (team notes), a shared
+ * resource index, and memory/MEMORY.md (personal structured memory index).
+ * These all get appended to the system prompt so the agent has everything it
+ * needs from the first turn.
+ *
+ * Six sources are layered:
+ *
+ *   1. `<workspace>` — AGENTS.md from the enterprise workspace core.
+ *   2. `<template>` — AGENTS.md + skills index from the Vite plugin bundle.
+ *   3. `<workspace>` — SQL workspace AGENTS.md and instructions/*.md.
+ *      Runtime global defaults managed from Dispatch and inherited by apps.
+ *   4. `<shared>` — SQL shared AGENTS.md and instructions/*.md. App/team/org
+ *      guidance that can override or narrow workspace defaults.
+ *   5. `<shared>` — LEARNINGS.md from the SQL shared scope. Team-level notes.
+ *   6. `<personal>` — memory/MEMORY.md from the SQL personal scope. The
+ *      current user's structured memory index.
+ *
+ * Each source is read independently — no copying between them. Editing
+ * AGENTS.md and restarting the server is all it takes; Vite HMR invalidates
+ * the bundle in dev so changes land instantly.
+ */
+export declare function loadResourcesForPrompt(owner: string, compact?: boolean, selfAppId?: string): Promise<string>;
 export declare function createAgentChatPlugin(options?: AgentChatPluginOptions): NitroPluginDef;
 /**
  * Default agent chat plugin with no template-specific actions.
- * In dev mode, provides file system, shell, and database tools.
+ * In dev mode, provides file system, bash, and database tools.
  * In production, provides only the default system prompt.
  */
 export declare const defaultAgentChatPlugin: NitroPluginDef;

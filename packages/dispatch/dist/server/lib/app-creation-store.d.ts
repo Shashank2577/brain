@@ -1,3 +1,4 @@
+type WorkspaceAppAudience = "internal" | "public";
 export interface WorkspaceAppSummary {
     id: string;
     name: string;
@@ -5,6 +6,9 @@ export interface WorkspaceAppSummary {
     path: string;
     url: string | null;
     isDispatch: boolean;
+    audience: WorkspaceAppAudience;
+    publicPaths: string[];
+    protectedPaths: string[];
     status?: "ready" | "pending";
     statusLabel?: string;
     builderUrl?: string | null;
@@ -25,6 +29,7 @@ export interface ListWorkspaceAppsOptions {
      * when rendering the "Hidden apps" expander.
      */
     includeArchived?: boolean;
+    audience?: WorkspaceAppAudience | "all";
 }
 export interface AvailableWorkspaceTemplate {
     name: string;
@@ -52,6 +57,7 @@ export interface WorkspaceInfo {
     /** Number of apps currently scaffolded under apps/. */
     appCount: number;
 }
+export declare function generateWorkspaceAppDescription(prompt: string, appId: string): string;
 export declare function archiveWorkspaceApp(input: {
     appId: string;
 }): Promise<{
@@ -75,6 +81,11 @@ export declare function getEnvBuilderProjectId(): string | null;
  * "starter" / "dispatch" with no parent context).
  */
 export declare function getWorkspaceInfo(): WorkspaceInfo;
+export declare function updateWorkspaceAppMetadata(input: {
+    appId: string;
+    name?: string | null;
+    description?: string | null;
+}): Promise<WorkspaceAppSummary>;
 export declare function listWorkspaceApps(options?: ListWorkspaceAppsOptions): Promise<WorkspaceAppSummary[]>;
 export declare function listAvailableWorkspaceTemplates(): Promise<AvailableWorkspaceTemplate[]>;
 export declare function scaffoldWorkspaceAppFromTemplate(input: {
@@ -92,6 +103,7 @@ export declare function setAppCreationSettings(input: {
 export declare function startWorkspaceAppCreation(input: {
     prompt: string;
     appId?: string | null;
+    description?: string | null;
     template?: string | null;
     secretIds?: string[];
     resourceIds?: string[];
@@ -140,4 +152,5 @@ export declare function startWorkspaceAppCreation(input: {
     message: string;
     prompt?: undefined;
 }>;
+export {};
 //# sourceMappingURL=app-creation-store.d.ts.map

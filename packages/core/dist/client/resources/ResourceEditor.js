@@ -36,9 +36,11 @@ const FM_INPUT_STYLE = {
     width: "100%",
     padding: 0,
 };
-function FrontmatterBar({ resourcePath, frontmatter, onChange, }) {
+function FrontmatterBar({ resourcePath, frontmatter, onChange, readOnly, }) {
     const getField = (key) => getFrontmatterValue(frontmatter, key) ?? "";
     const updateField = (key, value) => {
+        if (readOnly)
+            return;
         const exists = frontmatter.fields.some((f) => f.key === key);
         const newFields = exists
             ? frontmatter.fields.map((f) => (f.key === key ? { ...f, value } : f))
@@ -66,7 +68,7 @@ function FrontmatterBar({ resourcePath, frontmatter, onChange, }) {
             fontSize: 12,
             lineHeight: 1.5,
             color: "hsl(var(--muted-foreground))",
-        }, children: [_jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [_jsx("input", { value: name, onChange: (e) => updateField("name", e.target.value), placeholder: isCustomAgent ? "Agent name" : "Skill name", style: {
+        }, children: [_jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [_jsx("input", { value: name, onChange: (e) => updateField("name", e.target.value), readOnly: readOnly, placeholder: isCustomAgent ? "Agent name" : "Skill name", style: {
                             ...FM_INPUT_STYLE,
                             fontWeight: 600,
                             color: "hsl(var(--foreground))",
@@ -92,14 +94,14 @@ function FrontmatterBar({ resourcePath, frontmatter, onChange, }) {
                                 ? "none"
                                 : "1px dashed hsl(var(--border))",
                             fontWeight: 500,
-                        }, children: [_jsx("input", { type: "checkbox", checked: isUserInvocable, onChange: (e) => updateField("user-invocable", e.target.checked ? "true" : "false"), style: { display: "none" } }), "/", name || "command"] })) : null, isCustomAgent ? (_jsxs("select", { value: model, onChange: (e) => updateField("model", e.target.value), style: {
+                        }, children: [_jsx("input", { type: "checkbox", checked: isUserInvocable, disabled: readOnly, onChange: (e) => updateField("user-invocable", e.target.checked ? "true" : "false"), style: { display: "none" } }), "/", name || "command"] })) : null, isCustomAgent ? (_jsxs("select", { value: model, disabled: readOnly, onChange: (e) => updateField("model", e.target.value), style: {
                             borderRadius: 4,
                             border: "1px solid hsl(var(--border))",
                             background: "hsl(var(--background))",
                             color: "hsl(var(--foreground))",
                             fontSize: 11,
                             padding: "2px 6px",
-                        }, children: [_jsx("option", { value: "inherit", children: "Default model" }), _jsx("option", { value: "claude-sonnet-4-6", children: "Claude Sonnet 4.6" }), _jsx("option", { value: "claude-haiku-4-5-20251001", children: "Claude Haiku 4.5" })] })) : null] }), _jsx("input", { value: description, onChange: (e) => updateField("description", e.target.value), placeholder: isCustomAgent
+                        }, children: [_jsx("option", { value: "inherit", children: "Default model" }), _jsx("option", { value: "claude-sonnet-4-6", children: "Claude Sonnet 4.6" }), _jsx("option", { value: "claude-haiku-4-5-20251001", children: "Claude Haiku 4.5" })] })) : null] }), _jsx("input", { value: description, readOnly: readOnly, onChange: (e) => updateField("description", e.target.value), placeholder: isCustomAgent
                     ? "Description — what this agent should handle"
                     : "Description — what this skill does", style: {
                     ...FM_INPUT_STYLE,
@@ -115,7 +117,7 @@ function FrontmatterBar({ resourcePath, frontmatter, onChange, }) {
                             fontSize: 10,
                             color: "hsl(var(--muted-foreground))",
                             minWidth: 28,
-                        }, children: "Tools" }), _jsxs("select", { value: tools, onChange: (e) => updateField("tools", e.target.value), style: {
+                        }, children: "Tools" }), _jsxs("select", { value: tools, disabled: readOnly, onChange: (e) => updateField("tools", e.target.value), style: {
                             borderRadius: 4,
                             border: "1px solid hsl(var(--border))",
                             background: "hsl(var(--background))",
@@ -487,7 +489,7 @@ const shStyles = `
 .sh-num { color: #fca5a5; }
 .sh-lit { color: #c4b5fd; }
 `;
-function SyntaxHighlightEditor({ value, onChange, language: _language, }) {
+function SyntaxHighlightEditor({ value, onChange, language: _language, readOnly, }) {
     const textareaRef = useRef(null);
     const preRef = useRef(null);
     const highlighted = useMemo(() => highlightJson(value), [value]);
@@ -518,7 +520,10 @@ function SyntaxHighlightEditor({ value, onChange, language: _language, }) {
                             pointerEvents: "none",
                             color: "hsl(var(--muted-foreground))",
                             background: "transparent",
-                        }, dangerouslySetInnerHTML: { __html: highlighted + "\n" } }), _jsx("textarea", { ref: textareaRef, value: value, onChange: (e) => onChange(e.target.value), onScroll: syncScroll, spellCheck: false, style: {
+                        }, dangerouslySetInnerHTML: { __html: highlighted + "\n" } }), _jsx("textarea", { ref: textareaRef, value: value, onChange: (e) => {
+                            if (!readOnly)
+                                onChange(e.target.value);
+                        }, onScroll: syncScroll, readOnly: readOnly, spellCheck: false, style: {
                             ...sharedStyle,
                             position: "absolute",
                             inset: 0,
@@ -533,7 +538,7 @@ function SyntaxHighlightEditor({ value, onChange, language: _language, }) {
                             WebkitTextFillColor: "transparent",
                         } })] })] }));
 }
-function VisualMarkdownEditor({ content, onChange, resourcePath, }) {
+function VisualMarkdownEditor({ content, onChange, resourcePath, readOnly, }) {
     const isSettingContent = useRef(false);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
@@ -575,12 +580,15 @@ function VisualMarkdownEditor({ content, onChange, resourcePath, }) {
             }),
         ],
         content: parsed?.body ?? content,
+        editable: !readOnly,
         editorProps: {
             attributes: {
                 class: "re-prose",
             },
         },
         onUpdate: ({ editor }) => {
+            if (readOnly)
+                return;
             if (isSettingContent.current)
                 return;
             try {
@@ -595,6 +603,11 @@ function VisualMarkdownEditor({ content, onChange, resourcePath, }) {
             }
         },
     });
+    useEffect(() => {
+        if (!editor || editor.isDestroyed)
+            return;
+        editor.setEditable(!readOnly);
+    }, [editor, readOnly]);
     useEffect(() => {
         if (!editor || editor.isDestroyed)
             return;
@@ -622,7 +635,13 @@ function VisualMarkdownEditor({ content, onChange, resourcePath, }) {
             editor.chain().focus("end").run();
         }
     };
-    return (_jsxs("div", { className: "re-editor-wrapper re-editor-clickable", onClick: handleWrapperClick, style: { position: "relative", minHeight: "100%", cursor: "text" }, children: [parsed && (_jsx(FrontmatterBar, { resourcePath: resourcePath, frontmatter: parsed, onChange: (updated) => {
+    return (_jsxs("div", { className: "re-editor-wrapper re-editor-clickable", onClick: handleWrapperClick, style: {
+            position: "relative",
+            minHeight: "100%",
+            cursor: readOnly ? "default" : "text",
+        }, children: [parsed && (_jsx(FrontmatterBar, { resourcePath: resourcePath, frontmatter: parsed, readOnly: readOnly, onChange: (updated) => {
+                    if (readOnly)
+                        return;
                     frontmatterRef.current = updated;
                     // Get current body and combine with updated frontmatter
                     try {
@@ -632,7 +651,7 @@ function VisualMarkdownEditor({ content, onChange, resourcePath, }) {
                     catch {
                         // fallback
                     }
-                } })), _jsx(InlineBubbleToolbar, { editor: editor }), _jsx(SlashMenu, { editor: editor }), _jsx(EditorContent, { editor: editor })] }));
+                } })), !readOnly && _jsx(InlineBubbleToolbar, { editor: editor }), !readOnly && _jsx(SlashMenu, { editor: editor }), _jsx(EditorContent, { editor: editor })] }));
 }
 function parseRemoteAgentContent(content, path) {
     const fallbackId = getRemoteAgentIdFromPath(path);
@@ -665,7 +684,7 @@ function serializeRemoteAgent(value) {
         color: value.color,
     }, null, 2) + "\n");
 }
-function RemoteAgentFormEditor({ resource, onChange, }) {
+function RemoteAgentFormEditor({ resource, onChange, readOnly, }) {
     const [value, setValue] = useState(() => parseRemoteAgentContent(resource.content, resource.path));
     const prevIdRef = useRef(resource.id);
     useEffect(() => {
@@ -675,15 +694,17 @@ function RemoteAgentFormEditor({ resource, onChange, }) {
         }
     }, [resource.id, resource.content, resource.path]);
     const update = (patch) => {
+        if (readOnly)
+            return;
         const next = { ...value, ...patch };
         setValue(next);
         onChange(serializeRemoteAgent(next));
     };
     const inputClass = "w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-accent";
     const labelClass = "block text-[11px] font-medium text-muted-foreground mb-1";
-    return (_jsx("div", { className: "flex flex-1 min-h-0 flex-col overflow-y-auto p-4", children: _jsxs("div", { className: "max-w-md space-y-3", children: [_jsx("p", { className: "text-[11px] text-muted-foreground/70 leading-snug", children: "Connected remote agent over the A2A protocol. @-mention it in chat to delegate tasks." }), _jsxs("div", { children: [_jsx("label", { className: labelClass, children: "Name" }), _jsx("input", { className: inputClass, value: value.name, onChange: (e) => update({ name: e.target.value }), placeholder: "Analytics" })] }), _jsxs("div", { children: [_jsx("label", { className: labelClass, children: "URL" }), _jsx("input", { className: inputClass, value: value.url, onChange: (e) => update({ url: e.target.value }), placeholder: "https://analytics.example.com" }), _jsxs("p", { className: "mt-1 text-[10px] text-muted-foreground/50", children: ["A2A endpoint. The agent card is served at", " ", _jsx("code", { children: "/.well-known/agent-card.json" }), "."] })] }), _jsxs("div", { children: [_jsx("label", { className: labelClass, children: "Description" }), _jsx("textarea", { className: cn(inputClass, "resize-y"), rows: 3, value: value.description, onChange: (e) => update({ description: e.target.value }), placeholder: "What this agent is good at \u2014 helps the main agent decide when to delegate." })] }), _jsxs("div", { children: [_jsx("label", { className: labelClass, children: "Color" }), _jsxs("div", { className: "flex items-center gap-2", children: [_jsx("input", { type: "color", value: value.color, onChange: (e) => update({ color: e.target.value }), className: "h-8 w-10 cursor-pointer rounded border border-border bg-transparent" }), _jsx("input", { className: cn(inputClass, "flex-1"), value: value.color, onChange: (e) => update({ color: e.target.value }), placeholder: "#6B7280" })] })] })] }) }));
+    return (_jsx("div", { className: "flex flex-1 min-h-0 flex-col overflow-y-auto p-4", children: _jsxs("div", { className: "max-w-md space-y-3", children: [_jsx("p", { className: "text-[11px] text-muted-foreground/70 leading-snug", children: "Connected remote agent over the A2A protocol. @-mention it in chat to delegate tasks." }), _jsxs("div", { children: [_jsx("label", { className: labelClass, children: "Name" }), _jsx("input", { className: inputClass, value: value.name, readOnly: readOnly, onChange: (e) => update({ name: e.target.value }), placeholder: "Analytics" })] }), _jsxs("div", { children: [_jsx("label", { className: labelClass, children: "URL" }), _jsx("input", { className: inputClass, value: value.url, readOnly: readOnly, onChange: (e) => update({ url: e.target.value }), placeholder: "https://analytics.example.com" }), _jsxs("p", { className: "mt-1 text-[10px] text-muted-foreground/50", children: ["A2A endpoint. The agent card is served at", " ", _jsx("code", { children: "/.well-known/agent-card.json" }), "."] })] }), _jsxs("div", { children: [_jsx("label", { className: labelClass, children: "Description" }), _jsx("textarea", { className: cn(inputClass, "resize-y"), rows: 3, value: value.description, readOnly: readOnly, onChange: (e) => update({ description: e.target.value }), placeholder: "What this agent is good at \u2014 helps the main agent decide when to delegate." })] }), _jsxs("div", { children: [_jsx("label", { className: labelClass, children: "Color" }), _jsxs("div", { className: "flex items-center gap-2", children: [_jsx("input", { type: "color", value: value.color, disabled: readOnly, onChange: (e) => update({ color: e.target.value }), className: "h-8 w-10 cursor-pointer rounded border border-border bg-transparent" }), _jsx("input", { className: cn(inputClass, "flex-1"), value: value.color, readOnly: readOnly, onChange: (e) => update({ color: e.target.value }), placeholder: "#6B7280" })] })] })] }) }));
 }
-export function ResourceEditor({ resource, onSave, view: controlledView, onViewChange, onSaveStatusChange, hideToolbar, }) {
+export function ResourceEditor({ resource, onSave, view: controlledView, onViewChange, onSaveStatusChange, hideToolbar, readOnly, }) {
     const [content, setContent] = useState(resource.content);
     const [internalView, setInternalView] = useState(getViewPref);
     const view = controlledView ?? internalView;
@@ -700,6 +721,8 @@ export function ResourceEditor({ resource, onSave, view: controlledView, onViewC
         }
     }, [resource.id, resource.content, onSaveStatusChange]);
     const handleChange = useCallback((newContent) => {
+        if (readOnly)
+            return;
         setContent(newContent);
         setSaveStatus("idle");
         onSaveStatusChange?.("idle");
@@ -714,7 +737,7 @@ export function ResourceEditor({ resource, onSave, view: controlledView, onViewC
                 onSaveStatusChange?.("saved");
             }, 300);
         }, 1000);
-    }, [onSave, onSaveStatusChange]);
+    }, [onSave, onSaveStatusChange, readOnly]);
     const switchView = useCallback((v) => {
         setInternalView(v);
         setViewPref(v);
@@ -732,7 +755,7 @@ export function ResourceEditor({ resource, onSave, view: controlledView, onViewC
     const isRemoteAgent = isRemoteAgentPath(resource.path);
     // Remote-agent manifest → form editor
     if (isRemoteAgent) {
-        return (_jsx("div", { className: "flex h-full flex-col", children: _jsx(RemoteAgentFormEditor, { resource: resource, onChange: handleChange }) }));
+        return (_jsx("div", { className: "flex h-full flex-col", children: _jsx(RemoteAgentFormEditor, { resource: resource, onChange: handleChange, readOnly: readOnly }) }));
     }
     // Image preview
     if (isImage) {
@@ -748,14 +771,14 @@ export function ResourceEditor({ resource, onSave, view: controlledView, onViewC
                                 ? "Saving..."
                                 : saveStatus === "saved"
                                     ? "Saved"
-                                    : "" })] })), view === "visual" ? (_jsx("div", { className: "flex-1 min-h-0 overflow-y-auto p-3", children: _jsx(VisualMarkdownEditor, { content: content, onChange: handleChange, resourcePath: resource.path }) }, resource.id + "-visual")) : (_jsx("textarea", { value: content, onChange: (e) => handleChange(e.target.value), className: "flex-1 min-h-0 resize-none bg-transparent p-3 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50", style: {
+                                    : "" })] })), view === "visual" ? (_jsx("div", { className: "flex-1 min-h-0 overflow-y-auto p-3", children: _jsx(VisualMarkdownEditor, { content: content, onChange: handleChange, resourcePath: resource.path, readOnly: readOnly }) }, resource.id + "-visual")) : (_jsx("textarea", { value: content, onChange: (e) => handleChange(e.target.value), readOnly: readOnly, className: "flex-1 min-h-0 resize-none bg-transparent p-3 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50", style: {
                         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
                         lineHeight: 1.6,
                     }, spellCheck: false }))] }));
     }
     // Non-markdown text files
     const isJson = resource.mimeType === "application/json" || resource.path.endsWith(".json");
-    return (_jsx("div", { className: "flex h-full flex-col", children: isJson ? (_jsx(SyntaxHighlightEditor, { value: content, onChange: handleChange, language: "json" })) : (_jsx("textarea", { value: content, onChange: (e) => handleChange(e.target.value), className: "flex-1 min-h-0 resize-none bg-transparent p-3 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50", style: {
+    return (_jsx("div", { className: "flex h-full flex-col", children: isJson ? (_jsx(SyntaxHighlightEditor, { value: content, onChange: handleChange, language: "json", readOnly: readOnly })) : (_jsx("textarea", { value: content, onChange: (e) => handleChange(e.target.value), readOnly: readOnly, className: "flex-1 min-h-0 resize-none bg-transparent p-3 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50", style: {
                 fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
                 lineHeight: 1.6,
             }, spellCheck: false })) }));

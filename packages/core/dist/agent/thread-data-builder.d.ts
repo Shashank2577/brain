@@ -1,4 +1,5 @@
 import type { AgentChatAttachment, RunEvent } from "./types.js";
+import { type CodeAgentTranscriptEvent as CoreCodeAgentTranscriptEvent } from "../code-agents/transcript-normalizer.js";
 interface ContentPart {
     type: string;
     text?: string;
@@ -38,6 +39,22 @@ export declare function buildAssistantMessage(events: RunEvent[], runId?: string
  * fail with "Parent message not found".
  */
 export declare function normalizeThreadRepository(repo: any): any;
+export interface CodeAgentThreadTranscriptEvent {
+    id: string;
+    runId: string;
+    kind?: CoreCodeAgentTranscriptEvent["kind"];
+    type?: CoreCodeAgentTranscriptEvent["kind"] | "note";
+    message?: string;
+    text?: string;
+    createdAt: string;
+    metadata?: Record<string, unknown>;
+    artifactPath?: string;
+    artifactUrl?: string;
+}
+export interface BuildRepositoryFromCodeAgentTranscriptOptions {
+    hideCredentialMessages?: boolean;
+}
+export declare function buildRepositoryFromCodeAgentTranscript(events: readonly CodeAgentThreadTranscriptEvent[], options?: BuildRepositoryFromCodeAgentTranscriptOptions): any;
 /**
  * Merge an incoming client-side full-thread save over the current SQL copy.
  *

@@ -16,7 +16,9 @@ export interface TriggerDispatcherDeps {
     getActions: () => Record<string, ActionEntry>;
     getSystemPrompt: (owner: string) => Promise<string>;
     apiKey?: string;
-    model: string;
+    model?: string;
+    /** App/template id used for org-scoped per-app model defaults. */
+    appId?: string;
 }
 /**
  * Initialize the trigger dispatcher. Call once at server startup.

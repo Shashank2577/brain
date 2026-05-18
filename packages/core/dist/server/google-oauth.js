@@ -71,10 +71,24 @@ export function isMobile(event) {
 }
 /**
  * Build the static allowlist of origins we trust for `getOrigin`. Reads
- * deployment-known public URLs (`APP_URL`, `BETTER_AUTH_URL`, and the
- * workspace gateway). Each entry is normalised to `${proto}://${host}` (no
- * path). Duplicates collapse, invalid entries are dropped silently.
+ * deployment-known public URLs. Each entry is normalised to
+ * `${proto}://${host}` (no path). Duplicates collapse, invalid entries are
+ * dropped silently.
  */
+const EXPLICIT_PUBLIC_ORIGIN_ENV_KEYS = [
+    "WORKSPACE_OAUTH_ORIGIN",
+    "VITE_WORKSPACE_OAUTH_ORIGIN",
+    "APP_URL",
+    "VITE_APP_URL",
+    "BETTER_AUTH_URL",
+    "VITE_BETTER_AUTH_URL",
+    "URL",
+    "DEPLOY_URL",
+];
+const WORKSPACE_GATEWAY_ORIGIN_ENV_KEYS = [
+    "WORKSPACE_GATEWAY_URL",
+    "VITE_WORKSPACE_GATEWAY_URL",
+];
 function normalizeOrigin(raw) {
     if (!raw)
         return undefined;
@@ -86,16 +100,32 @@ function normalizeOrigin(raw) {
         return undefined;
     }
 }
+function addNormalizedOrigin(out, raw, options) {
+    const origin = normalizeOrigin(raw);
+    if (!origin)
+        return;
+    if (!options.allowLoopback && isLoopbackOrigin(origin))
+        return;
+    out.add(origin);
+}
+function firstOriginFromEnv(keys, options) {
+    for (const key of keys) {
+        const origin = normalizeOrigin(process.env[key]);
+        if (!origin)
+            continue;
+        if (!options.allowLoopback && isLoopbackOrigin(origin))
+            continue;
+        return origin;
+    }
+    return undefined;
+}
 function getConfiguredOriginAllowlist() {
     const out = new Set();
-    for (const raw of [
-        process.env.APP_URL,
-        process.env.BETTER_AUTH_URL,
-        process.env.WORKSPACE_GATEWAY_URL,
-    ]) {
-        const origin = normalizeOrigin(raw);
-        if (origin)
-            out.add(origin);
+    for (const key of EXPLICIT_PUBLIC_ORIGIN_ENV_KEYS) {
+        addNormalizedOrigin(out, process.env[key], { allowLoopback: true });
+    }
+    for (const key of WORKSPACE_GATEWAY_ORIGIN_ENV_KEYS) {
+        addNormalizedOrigin(out, process.env[key], { allowLoopback: false });
     }
     return out;
 }
@@ -103,14 +133,14 @@ function firstConfiguredOrigin() {
     return [...getConfiguredOriginAllowlist()][0];
 }
 function getWorkspaceCallbackOrigin() {
-    const publicAuthOrigin = normalizeOrigin(process.env.APP_URL) ??
-        normalizeOrigin(process.env.BETTER_AUTH_URL);
+    const publicAuthOrigin = firstOriginFromEnv(EXPLICIT_PUBLIC_ORIGIN_ENV_KEYS, {
+        allowLoopback: true,
+    });
     if (publicAuthOrigin)
         return publicAuthOrigin;
-    const gatewayOrigin = normalizeOrigin(process.env.WORKSPACE_GATEWAY_URL);
-    if (gatewayOrigin && !isLoopbackOrigin(gatewayOrigin))
-        return gatewayOrigin;
-    return firstConfiguredOrigin();
+    return firstOriginFromEnv(WORKSPACE_GATEWAY_ORIGIN_ENV_KEYS, {
+        allowLoopback: false,
+    });
 }
 function isLoopbackHost(host) {
     if (!host)

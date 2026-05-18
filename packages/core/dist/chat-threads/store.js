@@ -79,6 +79,34 @@ function readScope(r) {
     const label = r.scope_label;
     return label ? { type, id, label } : { type, id };
 }
+function normalizeForkSourceSnapshot(source) {
+    if (!source || typeof source.threadData !== "string")
+        return null;
+    const threadData = source.threadData.trim();
+    if (!threadData)
+        return null;
+    let parsed;
+    try {
+        parsed = normalizeThreadRepository(JSON.parse(threadData));
+    }
+    catch {
+        return null;
+    }
+    const repoMessageCount = Array.isArray(parsed.messages)
+        ? parsed.messages.length
+        : 0;
+    if (repoMessageCount <= 0)
+        return null;
+    return {
+        threadData: JSON.stringify(parsed),
+        title: typeof source.title === "string" ? source.title : "",
+        preview: typeof source.preview === "string" ? source.preview : "",
+        messageCount: repoMessageCount,
+        ...(Object.prototype.hasOwnProperty.call(source, "scope")
+            ? { scope: source.scope ?? null }
+            : {}),
+    };
+}
 function deriveMessageCount(threadData, fallback) {
     if (typeof threadData !== "string" || !threadData.trim())
         return fallback;
@@ -169,7 +197,47 @@ export async function getThread(id) {
     return rowToThread(rows[0]);
 }
 export async function forkThread(sourceId, ownerEmail, opts) {
-    const source = await getThread(sourceId);
+    const snapshot = normalizeForkSourceSnapshot(opts?.source);
+    let source = await getThread(sourceId);
+    if (!source) {
+        if (snapshot) {
+            try {
+                await createThread(ownerEmail, {
+                    id: sourceId,
+                    title: snapshot.title,
+                    scope: snapshot.scope ?? null,
+                });
+            }
+            catch {
+                // The agent run may have created the row while the user clicked Fork.
+            }
+            const created = await getThread(sourceId);
+            if (created?.ownerEmail === ownerEmail) {
+                await updateThreadData(sourceId, snapshot.threadData, snapshot.title || created.title, snapshot.preview || created.preview, snapshot.messageCount);
+                if (Object.prototype.hasOwnProperty.call(snapshot, "scope")) {
+                    await setThreadScope(sourceId, snapshot.scope ?? null);
+                }
+                source = await getThread(sourceId);
+            }
+        }
+    }
+    else if (snapshot &&
+        source.ownerEmail === ownerEmail &&
+        snapshot.messageCount > source.messageCount) {
+        // The source row exists but the in-memory snapshot is fresher — the agent
+        // run flushed an older state to SQL, but the tab has additional unflushed
+        // messages. Overlay the snapshot before cloning so the fork captures the
+        // latest user-visible content. Guard with messageCount > stored to avoid
+        // clobbering a fresher persisted row with a stale snapshot from another
+        // tab.
+        source = {
+            ...source,
+            threadData: snapshot.threadData,
+            title: snapshot.title || source.title,
+            preview: snapshot.preview || source.preview,
+            messageCount: snapshot.messageCount,
+        };
+    }
     if (!source || source.ownerEmail !== ownerEmail)
         return null;
     const id = opts?.id ?? generateId();

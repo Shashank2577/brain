@@ -7,8 +7,9 @@ export interface BuilderStatus {
      * and take precedence for that request.
      */
     envManaged?: boolean;
-    credentialSource?: "user" | "org" | "env";
+    credentialSource?: "user" | "org" | "workspace" | "env";
     connectUrl: string;
+    cliAuthUrl?: string;
     appHost: string;
     apiHost: string;
     branchProjectIdConfigured?: boolean;
@@ -27,6 +28,15 @@ export interface BuilderStatus {
         message: string;
         at: number;
     };
+    /**
+     * Set when the currently effective Builder credential was rejected by
+     * Builder's API. Unlike connectError, this describes the old credential pair
+     * and should not abort a new reconnect attempt while the popup is open.
+     */
+    authError?: {
+        message: string;
+        at: number;
+    };
 }
 /**
  * Fetches Builder connection status from /_agent-native/builder/status.
@@ -38,12 +48,24 @@ export declare function useBuilderStatus(): {
     refetch: () => Promise<void>;
 };
 export interface BuilderConnectFlowOptions {
+    /** Skip server status polling for hosts that own provider routing. */
+    enabled?: boolean;
     /** URL to synchronously open on start(). Defaults to the 302 shortcut. */
     popupUrl?: string;
+    /** Low-cardinality label for the UI surface that opened Builder connect. */
+    trackingSource?: string;
+    /** Product flow that needed Builder connect, e.g. connect_llm. */
+    trackingFlow?: string;
     /** Invoked after the status poll first sees `configured: true`. */
     onConnected?: (state: {
         orgName: string | null;
     }) => void | Promise<void>;
+}
+export interface BuilderConnectStartOptions {
+    /** Override the hook-level source for this click. */
+    trackingSource?: string;
+    /** Override the hook-level flow for this click. */
+    trackingFlow?: string;
 }
 export interface BuilderConnectFlow {
     configured: boolean;
@@ -72,7 +94,18 @@ export interface BuilderConnectFlow {
      */
     hasFetchedStatus: boolean;
     /** Open the popup and begin polling. Must be called from a user-gesture handler. */
-    start: () => void;
+    start: (options?: BuilderConnectStartOptions) => void;
 }
+export declare function withBuilderConnectTrackingParams(url: string, options?: {
+    source?: string;
+    flow?: string;
+}): string;
+export interface OpenBuilderConnectPopupOptions {
+    url?: string;
+    source?: string;
+    flow?: string;
+    features?: string;
+}
+export declare function openBuilderConnectPopup({ url, source, flow, features, }?: OpenBuilderConnectPopupOptions): Window | null;
 export declare function useBuilderConnectFlow(opts?: BuilderConnectFlowOptions): BuilderConnectFlow;
 //# sourceMappingURL=useBuilderStatus.d.ts.map

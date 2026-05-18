@@ -1,11 +1,12 @@
 import type { CustomAgentProfile, RemoteAgentManifest, ResourceKind as StoredResourceKind, SkillMetadata } from "../../resources/metadata.js";
 import type { McpServer } from "./use-mcp-servers.js";
+import { type BuiltinCapability } from "./use-builtin-capabilities.js";
 /**
  * Extended resource kind that includes virtual entries injected into the
  * Workspace tree — MCP servers live in the settings store, not the
  * resources table, but they render as a folder inside each scope.
  */
-export type ResourceKind = StoredResourceKind | "mcp-server";
+export type ResourceKind = StoredResourceKind | "mcp-server" | "mcp-builtin";
 export interface Resource {
     id: string;
     path: string;
@@ -15,6 +16,12 @@ export interface Resource {
     size: number;
     createdAt: number;
     updatedAt: number;
+    createdBy: "user" | "agent" | "system";
+    visibility: "workspace" | "agent_scratch";
+    threadId: string | null;
+    runId: string | null;
+    expiresAt: number | null;
+    metadata: string | null;
 }
 export interface ResourceMeta {
     id: string;
@@ -24,6 +31,12 @@ export interface ResourceMeta {
     size: number;
     createdAt: number;
     updatedAt: number;
+    createdBy: "user" | "agent" | "system";
+    visibility: "workspace" | "agent_scratch";
+    threadId: string | null;
+    runId: string | null;
+    expiresAt: number | null;
+    metadata: string | null;
 }
 export interface JobMetadata {
     schedule?: string;
@@ -47,8 +60,30 @@ export interface TreeNode {
     remoteAgentMeta?: RemoteAgentManifest;
     /** Attached when `kind === "mcp-server"` — virtual tree entry. */
     mcpServerMeta?: McpServer;
+    /** Attached when `kind === "mcp-builtin"` — virtual built-in MCP entry. */
+    mcpBuiltinMeta?: BuiltinCapability & {
+        scope: "user" | "org";
+        scopeEnabled: boolean;
+    };
 }
-export type ResourceScope = "personal" | "shared" | "all";
+export type ResourceScope = "personal" | "shared" | "workspace" | "all";
+export type EffectiveResourceScope = "workspace" | "shared" | "personal";
+export interface EffectiveResourceLayer {
+    scope: EffectiveResourceScope;
+    label: string;
+    owner: string;
+    resource: ResourceMeta | null;
+    exists: boolean;
+    effective: boolean;
+    overridden: boolean;
+    canWrite: boolean;
+}
+export interface EffectiveResourceContext {
+    path: string;
+    effectiveResource: ResourceMeta | null;
+    effectiveScope: EffectiveResourceScope | null;
+    layers: EffectiveResourceLayer[];
+}
 /**
  * Inject a virtual `mcp-servers/` folder into a scope's resource tree.
  *
@@ -65,22 +100,20 @@ export type ResourceScope = "personal" | "shared" | "all";
  */
 export declare function withMcpServersFolder(tree: TreeNode[], servers: McpServer[], opts?: {
     alwaysShow?: boolean;
+    builtins?: Array<{
+        capability: BuiltinCapability;
+        scope: "user" | "org";
+    }>;
 }): TreeNode[];
-/**
- * Group top-level `scripts/` and `tasks/` folders into a virtual
- * `agent-scratch/` folder.
- *
- * The agent occasionally writes scratch scripts and task notes to the
- * resources store while working through a request. These aren't user
- * content — they're agent machinery — and they clutter the top of the
- * personal tree. Grouping them under a single clearly-labeled folder
- * keeps them visible (so the user can inspect or delete) without making
- * them look like first-class personal files.
- */
-export declare function withAgentScratchFolder(tree: TreeNode[]): TreeNode[];
+export declare function withAgentScratchFolder(tree: TreeNode[], opts?: {
+    show?: boolean;
+}): TreeNode[];
 export declare function useResources(scope?: ResourceScope): import("@tanstack/react-query").UseQueryResult<ResourceMeta[], Error>;
-export declare function useResourceTree(scope?: ResourceScope): import("@tanstack/react-query").UseQueryResult<TreeNode[], Error>;
+export declare function useResourceTree(scope?: ResourceScope, opts?: {
+    includeAgentScratch?: boolean;
+}): import("@tanstack/react-query").UseQueryResult<TreeNode[], Error>;
 export declare function useResource(id: string | null): import("@tanstack/react-query").UseQueryResult<Resource, Error>;
+export declare function useEffectiveResourceContext(path: string | null): import("@tanstack/react-query").UseQueryResult<EffectiveResourceContext, Error>;
 export declare function useCreateResource(): import("@tanstack/react-query").UseMutationResult<Resource, Error, {
     path: string;
     content?: string;

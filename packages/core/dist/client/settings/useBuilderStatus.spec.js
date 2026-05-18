@@ -15,8 +15,8 @@ function setUserAgent(userAgent) {
         configurable: true,
     });
 }
-function BuilderConnectProbe({ popupUrl }) {
-    const flow = useBuilderConnectFlow({ popupUrl });
+function BuilderConnectProbe({ enabled = true, popupUrl, }) {
+    const flow = useBuilderConnectFlow({ enabled, popupUrl });
     return (_jsxs("div", { children: [_jsx("button", { type: "button", onClick: () => flow.start(), children: "Connect" }), _jsxs("output", { "data-testid": "status", children: [flow.configured ? "configured" : "not-configured", " ", flow.connecting ? "connecting" : "idle"] }), _jsx("output", { children: flow.error ?? "" })] }));
 }
 function createPopupStub() {
@@ -86,6 +86,20 @@ describe("useBuilderConnectFlow", () => {
         expect(openSpy).toHaveBeenCalledWith("about:blank", "_blank", "width=600,height=700");
         expect(popup.location.href).toBe(expectedConnectUrl(signedCliAuthUrl));
         expect(container.textContent).not.toContain("Popup blocked");
+    });
+    it("does not probe Builder status when disabled", async () => {
+        await act(async () => {
+            root.render(_jsx(BuilderConnectProbe, { enabled: false }));
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        expect(fetch).not.toHaveBeenCalled();
+        await act(async () => {
+            container.querySelector("button")?.click();
+            await Promise.resolve();
+        });
+        expect(openSpy).not.toHaveBeenCalled();
+        expect(fetch).not.toHaveBeenCalled();
     });
     it("refreshes an un-timestamped signed prop URL before navigating web popups", async () => {
         setUserAgent("Mozilla/5.0 Chrome/140.0");

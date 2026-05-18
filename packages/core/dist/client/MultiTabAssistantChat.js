@@ -80,27 +80,47 @@ function ChatSkeleton({ header, headerOnly = false, }) {
     return (_jsxs("div", { className: cn("flex flex-col min-h-0", headerOnly ? "shrink-0" : "flex-1 h-full"), children: [header ?? (_jsxs("div", { className: "flex items-center px-1 py-1 border-b border-border shrink-0 gap-0.5", children: [_jsx("div", { className: "h-[22px] w-20 rounded-md bg-muted animate-pulse" }), _jsxs("div", { className: "ml-auto flex gap-0.5", children: [_jsx("div", { className: "h-[22px] w-[22px] rounded-md bg-muted animate-pulse" }), _jsx("div", { className: "h-[22px] w-[22px] rounded-md bg-muted animate-pulse" })] })] })), !headerOnly && (_jsxs("div", { className: "flex-1 flex flex-col gap-3 p-4", children: [_jsx("div", { className: "flex justify-center py-8", children: _jsx("div", { className: "h-10 w-10 rounded-full bg-muted animate-pulse" }) }), _jsx("div", { className: "h-3 w-32 rounded bg-muted animate-pulse mx-auto" })] }))] }));
 }
 // ─── Scope Badge ─────────────────────────────────────────────────────────────
+function formatScopeType(type) {
+    return type.replace(/[-_]+/g, " ");
+}
+function indefiniteArticleFor(value) {
+    return /^[aeiou]/i.test(value.trim()) ? "an" : "a";
+}
+function getScopeCopy(scope, isCurrentScope) {
+    const type = formatScopeType(scope.type);
+    const fallbackObject = isCurrentScope
+        ? `this ${type}`
+        : `${indefiniteArticleFor(type)} ${type}`;
+    const objectLabel = scope.label || fallbackObject;
+    return {
+        objectLabel,
+        chipLabel: scope.label || (isCurrentScope ? `this ${type}` : `${type} context`),
+    };
+}
 /**
- * Thin "Linked to {Deck Title}" chip at the top of a scoped chat. Click →
- * popover with the Detach button. The chip is text + link icon and stays
- * unobtrusive when the user doesn't need it. It is the only escape hatch
- * for taking a scoped chat back to a general one, so it stays visible the
- * whole time a chat is scoped — not just on the empty state.
+ * Thin context chip at the top of a scoped chat. Click → popover with
+ * related chats and the remove-context action. The chip stays unobtrusive
+ * when the user doesn't need it, but remains available as the escape hatch
+ * for taking a scoped chat back to a general one.
  */
-function ScopeBadge({ scope, onDetach, otherScopedThreads, activeThreadId, openTabIds, onSelectThread, }) {
+function ScopeBadge({ scope, currentScope, onDetach, otherScopedThreads, activeThreadId, openTabIds, onSelectThread, }) {
     const [open, setOpen] = useState(false);
-    // Templates that don't have the resource's display title at layout time
-    // pass `{ type, id }` without a label. Fall back to "this {type}" so the
-    // chip still reads naturally.
-    const heading = scope.label
-        ? `Linked to ${scope.label}`
-        : `Linked to this ${scope.type}`;
-    const detailLabel = scope.label || `this ${scope.type}`;
+    const isCurrentScope = Boolean(currentScope &&
+        currentScope.type === scope.type &&
+        currentScope.id === scope.id);
+    const hasDifferentCurrentScope = Boolean(currentScope && !isCurrentScope);
+    const { objectLabel, chipLabel } = getScopeCopy(scope, isCurrentScope);
+    const heading = `Using ${chipLabel}`;
+    const detailSuffix = hasDifferentCurrentScope
+        ? "Start a new chat to use the current page."
+        : isCurrentScope
+            ? "New chats here keep this context."
+            : "Start a new chat for a general conversation.";
     const otherCount = otherScopedThreads.length;
-    return (_jsx("div", { className: "flex items-center justify-center py-1 px-3 text-[11px] text-muted-foreground border-b border-border/40 shrink-0", children: _jsxs(Popover, { open: open, onOpenChange: setOpen, children: [_jsx(PopoverTrigger, { asChild: true, children: _jsxs("button", { type: "button", className: "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 hover:bg-accent/50 hover:text-foreground cursor-pointer", "aria-label": heading, children: [_jsx(IconLink, { size: 11, className: "shrink-0 opacity-70" }), _jsx("span", { className: "truncate max-w-[220px]", children: heading }), otherCount > 0 && (_jsxs("span", { className: "ml-0.5 rounded-full bg-muted px-1.5 py-px text-[10px] leading-none text-muted-foreground", "aria-label": `${otherCount} other chats for this ${scope.type}`, children: ["+", otherCount] }))] }) }), _jsxs(PopoverContent, { align: "center", side: "bottom", className: "w-72 p-0", children: [_jsxs("p", { className: "px-3 pt-2 pb-1.5 text-[11px] text-muted-foreground", children: ["This chat is linked to", " ", _jsx("span", { className: "text-foreground", children: detailLabel }), ". New chats started here stay with this ", scope.type, "."] }), otherCount > 0 && (_jsxs("div", { className: "border-t border-border", children: [_jsx("div", { className: "px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70", children: "Other chats here" }), _jsx("div", { className: "max-h-56 overflow-y-auto pb-1", children: otherScopedThreads.map((thread) => renderThreadRow(thread, activeThreadId, openTabIds, formatThreadTime, onSelectThread, () => setOpen(false))) })] })), _jsx("div", { className: "border-t border-border p-1", children: _jsxs("button", { type: "button", onClick: () => {
+    return (_jsx("div", { className: "flex items-center justify-center py-1 px-3 text-[11px] text-muted-foreground border-b border-border/40 shrink-0", children: _jsxs(Popover, { open: open, onOpenChange: setOpen, children: [_jsx(PopoverTrigger, { asChild: true, children: _jsxs("button", { type: "button", className: "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 hover:bg-accent/50 hover:text-foreground cursor-pointer", "aria-label": heading, children: [_jsx(IconLink, { size: 11, className: "shrink-0 opacity-70" }), _jsx("span", { className: "truncate max-w-[220px]", children: heading }), otherCount > 0 && (_jsxs("span", { className: "ml-0.5 rounded-full bg-muted px-1.5 py-px text-[10px] leading-none text-muted-foreground", "aria-label": `${otherCount} other chats for ${objectLabel}`, children: ["+", otherCount] }))] }) }), _jsxs(PopoverContent, { align: "center", side: "bottom", className: "w-72 p-0", children: [_jsxs("p", { className: "px-3 pt-2 pb-1.5 text-[11px] text-muted-foreground", children: ["This chat can see", " ", _jsx("span", { className: "text-foreground", children: objectLabel }), ".", " ", detailSuffix] }), otherCount > 0 && (_jsxs("div", { className: "border-t border-border", children: [_jsxs("div", { className: "px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70", children: ["Chats for ", objectLabel] }), _jsx("div", { className: "max-h-56 overflow-y-auto pb-1", children: otherScopedThreads.map((thread) => renderThreadRow(thread, activeThreadId, openTabIds, formatThreadTime, onSelectThread, () => setOpen(false))) })] })), _jsx("div", { className: "border-t border-border p-1", children: _jsxs("button", { type: "button", onClick: () => {
                                     setOpen(false);
                                     onDetach();
-                                }, className: "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-foreground hover:bg-accent cursor-pointer", children: [_jsx(IconLinkOff, { size: 13 }), _jsxs("span", { children: ["Detach from this ", scope.type] })] }) })] })] }) }));
+                                }, className: "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-foreground hover:bg-accent cursor-pointer", children: [_jsx(IconLinkOff, { size: 13 }), _jsx("span", { children: "Remove context" })] }) })] })] }) }));
 }
 /**
  * Empty-state addon shown when the user starts a fresh chat inside a
@@ -113,8 +133,8 @@ function PreviousScopedChatsHint({ scope, threads, onSelectThread, }) {
     const MAX_INLINE = 3;
     const shown = threads.slice(0, MAX_INLINE);
     const remaining = threads.length - shown.length;
-    const scopeLabel = scope.label || `this ${scope.type}`;
-    return (_jsxs("div", { className: "flex w-full max-w-[280px] flex-col gap-1.5", children: [_jsxs("div", { className: "text-[10px] uppercase tracking-wider text-muted-foreground/70 text-center", children: ["Continue a previous chat", _jsxs("span", { className: "ml-1 normal-case text-muted-foreground/70", children: ["for ", scopeLabel] })] }), _jsx("div", { className: "flex flex-col gap-1", children: shown.map((thread) => (_jsxs("button", { type: "button", onClick: () => onSelectThread(thread.id), className: "flex items-baseline justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-left hover:bg-accent cursor-pointer", children: [_jsx("span", { className: "truncate text-[12px] text-foreground", children: thread.title || thread.preview || "Chat" }), _jsx("span", { className: "shrink-0 text-[10px] text-muted-foreground", children: formatThreadTime(thread.updatedAt) })] }, thread.id))) }), remaining > 0 && (_jsxs("div", { className: "text-[10px] text-muted-foreground/70 text-center", children: ["+", remaining, " more in the chip above"] }))] }));
+    const scopeLabel = scope.label || `this ${formatScopeType(scope.type)}`;
+    return (_jsxs("div", { className: "flex w-full max-w-[280px] flex-col gap-1.5", children: [_jsxs("div", { className: "text-[10px] uppercase tracking-wider text-muted-foreground/70 text-center", children: ["Previous chats for ", scopeLabel] }), _jsx("div", { className: "flex flex-col gap-1", children: shown.map((thread) => (_jsxs("button", { type: "button", onClick: () => onSelectThread(thread.id), className: "flex items-baseline justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-left hover:bg-accent cursor-pointer", children: [_jsx("span", { className: "truncate text-[12px] text-foreground", children: thread.title || thread.preview || "Chat" }), _jsx("span", { className: "shrink-0 text-[10px] text-muted-foreground", children: formatThreadTime(thread.updatedAt) })] }, thread.id))) }), remaining > 0 && (_jsxs("div", { className: "text-[10px] text-muted-foreground/70 text-center", children: ["+", remaining, " more"] }))] }));
 }
 /**
  * Thin confirmation banner shown briefly after detach. The chip itself
@@ -122,8 +142,8 @@ function PreviousScopedChatsHint({ scope, threads, onSelectThread, }) {
  * holds the visual feedback long enough for the user to register what
  * just happened and learn where the chat went (History popover).
  */
-function DetachConfirmationBanner({ scopeType }) {
-    return (_jsx("div", { className: "flex items-center justify-center py-1 px-3 text-[11px] text-muted-foreground border-b border-border/40 shrink-0", children: _jsxs("span", { className: "inline-flex items-center gap-1.5 rounded-full bg-accent/40 px-2 py-0.5 text-foreground", children: [_jsx(IconCheck, { size: 11, className: "shrink-0 opacity-80" }), _jsxs("span", { children: ["Detached from this ", scopeType, " \u2014 find this chat in History"] })] }) }));
+function DetachConfirmationBanner() {
+    return (_jsx("div", { className: "flex items-center justify-center py-1 px-3 text-[11px] text-muted-foreground border-b border-border/40 shrink-0", children: _jsxs("span", { className: "inline-flex items-center gap-1.5 rounded-full bg-accent/40 px-2 py-0.5 text-foreground", children: [_jsx(IconCheck, { size: 11, className: "shrink-0 opacity-80" }), _jsx("span", { children: "Context removed. Find this chat in History." })] }) }));
 }
 // ─── History Popover ─────────────────────────────────────────────────────────
 function formatThreadTime(ts) {
@@ -246,7 +266,7 @@ function HelpPopover({ onClose }) {
     ];
     return (_jsxs(_Fragment, { children: [_jsx("div", { className: "fixed inset-0 z-40", onClick: onClose }), _jsxs("div", { className: "absolute right-2 top-0 z-50 w-72 rounded-lg border border-border bg-popover shadow-lg", children: [_jsxs("div", { className: "flex items-center justify-between px-3 py-2 border-b border-border", children: [_jsx("span", { className: "text-xs font-medium text-foreground", children: "Available Commands" }), _jsx("button", { onClick: onClose, "aria-label": "Close help", className: "flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground", children: _jsx(IconX, { size: 12 }) })] }), _jsx("div", { className: "py-1", children: commands.map((cmd) => (_jsxs("div", { className: "px-3 py-1.5", children: [_jsx("div", { className: "text-xs font-medium text-foreground", children: cmd.name }), _jsx("div", { className: "text-[11px] text-muted-foreground", children: cmd.description })] }, cmd.name))) })] })] }));
 }
-export function MultiTabAssistantChat({ showTabBar = true, renderHeader, renderOverlay, contentHidden = false, apiUrl = agentNativePath("/_agent-native/agent-chat"), storageKey, scope = null, ...props }) {
+export function MultiTabAssistantChat({ showTabBar = true, renderHeader, renderOverlay, contentHidden = false, apiUrl = agentNativePath("/_agent-native/agent-chat"), storageKey, browserTabId, scope = null, ...props }) {
     const { threads, activeThreadId, isLoading, createThread, switchThread, deleteThread, detachThread, forkThread, saveThreadData, generateTitle, searchThreads, refreshThreads, isNewThread, } = useChatThreads(apiUrl, storageKey, scope);
     // Namespace all localStorage keys by storageKey when provided (for per-app isolation in frame)
     const keyPrefix = storageKey ? `:${storageKey}` : "";
@@ -584,17 +604,13 @@ export function MultiTabAssistantChat({ showTabBar = true, renderHeader, renderO
         initializedRef.current = true;
         const threadIds = new Set(threads.map((t) => t.id));
         const threadMap = new Map(threads.map((t) => [t.id, t]));
-        // Auto-close only empty tabs inactive for more than 4 hours. Non-empty
-        // conversations should survive refresh even if they are old; otherwise the
-        // chat appears to disappear even though it still exists in history.
-        const STALE_THRESHOLD_MS = 4 * 60 * 60 * 1000;
+        // Hide tabs that have had no activity for more than 12 hours. Stale tabs
+        // are removed from the sidebar on load but remain accessible via history.
+        const STALE_THRESHOLD_MS = 12 * 60 * 60 * 1000;
         const now = Date.now();
         const isStale = (id) => {
             const thread = threadMap.get(id);
-            return thread
-                ? thread.messageCount === 0 &&
-                    now - thread.updatedAt > STALE_THRESHOLD_MS
-                : false;
+            return thread ? now - thread.updatedAt > STALE_THRESHOLD_MS : false;
         };
         // If the active thread is a sub-agent, switch to its parent or the most recent main thread
         if (parentMap[activeThreadId]) {
@@ -610,7 +626,7 @@ export function MultiTabAssistantChat({ showTabBar = true, renderHeader, renderO
             }
         }
         setOpenTabIds((prev) => {
-            // Filter out tabs that no longer exist, sub-agent tabs, or stale tabs (>4h inactive)
+            // Filter out tabs that no longer exist, sub-agent tabs, or stale tabs (>12h inactive)
             const valid = prev.filter((id) => threadIds.has(id) && !parentMap[id] && !isStale(id));
             // Ensure active thread is included (only if it's not a sub-agent and not stale)
             if (!parentMap[activeThreadId] &&
@@ -1059,9 +1075,10 @@ export function MultiTabAssistantChat({ showTabBar = true, renderHeader, renderO
         }
     }, [addTab, props.onExecModeChange]);
     const handleForkChat = useCallback(async (sourceThreadId) => {
-        const forkedId = await forkThread(sourceThreadId);
+        const sourceSnapshot = chatRefs.current.get(sourceThreadId)?.exportThreadSnapshot() ?? null;
+        const forkedId = await forkThread(sourceThreadId, sourceSnapshot);
         if (!forkedId)
-            return;
+            return false;
         setOpenTabIds((prev) => {
             const idx = prev.indexOf(sourceThreadId);
             if (idx !== -1) {
@@ -1072,6 +1089,7 @@ export function MultiTabAssistantChat({ showTabBar = true, renderHeader, renderO
             return [...prev, forkedId];
         });
         switchThread(forkedId);
+        return true;
     }, [forkThread, switchThread]);
     // Build tabs from open thread IDs
     const threadMap = new Map(threads.map((t) => [t.id, t]));
@@ -1181,27 +1199,33 @@ export function MultiTabAssistantChat({ showTabBar = true, renderHeader, renderO
                                                         }, children: _jsx(IconX, { size: 12 }) })] }, tab.id)))] }) }))] }));
                     })()
                     : null, _jsxs("div", { className: "relative flex-1 flex flex-col min-h-0", children: [renderOverlay ? renderOverlay(headerProps) : null, !contentHidden &&
-                        (activeThreadScope && activeThreadId ? (_jsx(ScopeBadge, { scope: activeThreadScope, onDetach: handleDetachActiveThread, otherScopedThreads: otherScopedThreads, activeThreadId: activeThreadId, openTabIds: new Set(openTabIds), onSelectThread: openFromHistory })) : detachConfirmType ? (_jsx(DetachConfirmationBanner, { scopeType: detachConfirmType })) : null), showHistory && (_jsx(HistoryPopover, { threads: threads, openTabIds: new Set(openTabIds), activeThreadId: activeThreadId, currentScope: scope, onSelect: openFromHistory, onClose: () => setShowHistory(false), onSearch: searchThreads })), helpVisible && _jsx(HelpPopover, { onClose: () => setHelpVisible(false) }), [...new Set(openTabIds)]
+                        (activeThreadScope && activeThreadId ? (_jsx(ScopeBadge, { scope: activeThreadScope, currentScope: scope, onDetach: handleDetachActiveThread, otherScopedThreads: otherScopedThreads, activeThreadId: activeThreadId, openTabIds: new Set(openTabIds), onSelectThread: openFromHistory })) : detachConfirmType ? (_jsx(DetachConfirmationBanner, {})) : null), showHistory && (_jsx(HistoryPopover, { threads: threads, openTabIds: new Set(openTabIds), activeThreadId: activeThreadId, currentScope: scope, onSelect: openFromHistory, onClose: () => setShowHistory(false), onSearch: searchThreads })), helpVisible && _jsx(HelpPopover, { onClose: () => setHelpVisible(false) }), [...new Set(openTabIds)]
                         .filter((tabId) => tabId === activeThreadId || mountedTabsRef.current.has(tabId))
                         .map((tabId) => {
                         const modelSelection = resolveThreadModelSelection(tabId);
+                        const tabThread = threads.find((thread) => thread.id === tabId);
+                        const tabScope = tabThread?.scope ??
+                            (tabId === activeThreadId ? activeThreadScope : null);
+                        const tabDynamicSuggestions = tabId === activeThreadId && !contentHidden
+                            ? props.dynamicSuggestions
+                            : false;
                         return (_jsxs("div", { className: "flex-1 min-h-0 flex-col", style: {
                                 display: contentHidden || tabId !== activeThreadId ? "none" : "flex",
                             }, children: [_jsx(RunStuckBanner, { threadId: tabId, apiUrl: apiUrl, onRetry: () => {
                                         const handle = chatRefs.current.get(tabId);
                                         handle?.sendMessage("Continue from where you left off and finish my last request. Do not repeat completed work.");
-                                    } }), _jsx(AssistantChat, { ...props, emptyStateText: activeThreadScope?.label && tabId === activeThreadId
-                                        ? `Ask about ${activeThreadScope.label}`
+                                    } }), _jsx(AssistantChat, { ...props, dynamicSuggestions: tabDynamicSuggestions, emptyStateText: tabScope?.label && tabId === activeThreadId
+                                        ? `Ask about ${tabScope.label}`
                                         : props.emptyStateText, emptyStateAddon: tabId === activeThreadId &&
-                                        activeThreadScope &&
-                                        otherScopedThreads.length > 0 ? (_jsx(PreviousScopedChatsHint, { scope: activeThreadScope, threads: otherScopedThreads, onSelectThread: openFromHistory })) : undefined, ref: (handle) => {
+                                        tabScope &&
+                                        otherScopedThreads.length > 0 ? (_jsx(PreviousScopedChatsHint, { scope: tabScope, threads: otherScopedThreads, onSelectThread: openFromHistory })) : undefined, ref: (handle) => {
                                         if (handle) {
                                             chatRefs.current.set(tabId, handle);
                                         }
                                         else {
                                             chatRefs.current.delete(tabId);
                                         }
-                                    }, threadId: tabId, tabId: tabId, apiUrl: apiUrl, isNewThread: newThreadIds.current.has(tabId) || isNewThread(tabId), onMessageCountChange: (count) => setMessageCounts((prev) => prev[tabId] === count
+                                    }, threadId: tabId, tabId: tabId, browserTabId: browserTabId, contextScope: tabScope, apiUrl: apiUrl, isNewThread: newThreadIds.current.has(tabId) || isNewThread(tabId), onMessageCountChange: (count) => setMessageCounts((prev) => prev[tabId] === count
                                         ? prev
                                         : { ...prev, [tabId]: count }), onSaveThread: handleSaveThread, onGenerateTitle: handleGenerateTitle, onSlashCommand: handleSlashCommand, selectedModel: modelSelection?.model, selectedEngine: modelSelection?.engine, selectedEffort: modelSelection?.effort ?? "auto", defaultModel: defaultModel, availableModels: availableModels, onModelChange: handleModelChange, onEffortChange: handleEffortChange, onForkChat: () => handleForkChat(tabId) })] }, tabId));
                     })] })] }));

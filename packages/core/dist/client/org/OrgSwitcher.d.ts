@@ -5,12 +5,12 @@ export interface OrgSwitcherProps {
     /** Keep the switcher's button height reserved while org state is loading. */
     reserveSpace?: boolean;
     /**
-     * Optional path to navigate to when the user clicks "Workspace settings".
-     * Templates that mount a dedicated team page (e.g. Dispatch's `/team`) can
-     * pass it here. When unset, only the in-sidebar settings panel opens —
-     * suitable for templates without a dedicated team page.
+     * Path to navigate to when the user clicks "Organization settings".
+     * Defaults to `/team`, the standard organization-management route. Templates
+     * with an established org surface can pass their own path; pass `null` to
+     * only open the in-sidebar settings panel.
      */
-    settingsPath?: string;
+    settingsPath?: string | null;
 }
 /**
  * Compact org switcher button. Shows the active org (or "Personal" when the

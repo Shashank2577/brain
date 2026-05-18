@@ -7,7 +7,9 @@
 export { loadMcpConfig, autoDetectMcpConfig, } from "./config.js";
 export { McpClientManager, parseMcpToolName, MCP_TOOL_PREFIX, } from "./manager.js";
 export { listRemoteServers, addRemoteServer, removeRemoteServer, validateRemoteUrl, normalizeServerName, mergedConfigKey, parseMergedKey, hashEmail, toHttpServerConfig, toHttpServerConfigAsync, materializeHeaders, } from "./remote-store.js";
-export { mountMcpServersRoutes, buildMergedConfig } from "./routes.js";
+export { BUILTIN_MCP_CAPABILITIES, getBuiltinMcpCapability, isBuiltinMcpCapabilityAvailable, normalizeBuiltinMcpCapabilityIds, toBuiltinMcpServerConfig, } from "./builtin-capabilities.js";
+export { builtinMcpCapabilitiesSettingsKey, listEnabledBuiltinMcpCapabilities, setEnabledBuiltinMcpCapabilities, setBuiltinMcpCapabilityEnabled, } from "./builtin-store.js";
+export { mountMcpServersRoutes, buildMergedConfig, builtinMergedConfigKey, } from "./routes.js";
 export { mountMcpHubRoutes, listHubServers, getHubStatus, isHubServeEnabled, isHubConsumeEnabled, } from "./hub-routes.js";
 export { fetchHubServers } from "./hub-client.js";
 export { isMcpToolAllowedForRequest } from "./visibility.js";

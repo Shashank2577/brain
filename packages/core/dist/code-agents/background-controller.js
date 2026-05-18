@@ -83,6 +83,7 @@ async function sendLocalCodeBackgroundAgentFollowUp(input) {
             delivery: shouldQueue ? mode : "run-now",
         },
     });
+    const attachments = promptAttachmentsFromMetadata(input.metadata?.attachments);
     if (shouldQueue) {
         queueCodeAgentFollowUp({
             runId: activeRun.id,
@@ -92,6 +93,7 @@ async function sendLocalCodeBackgroundAgentFollowUp(input) {
             permissionMode: input.permissionMode,
             source: input.source ?? "background-agent-controller",
             createdAt: event.createdAt,
+            attachments,
         });
         return {
             ok: true,
@@ -106,6 +108,7 @@ async function sendLocalCodeBackgroundAgentFollowUp(input) {
         appendUserEvent: false,
         model: input.model,
         reasoningEffort: input.reasoningEffort,
+        attachments,
         stdout: input.stdout,
     });
     return {
@@ -233,6 +236,19 @@ function stopLocalCodeBackgroundAgentRun(runId) {
             : undefined,
         error: updated ? undefined : `Run not found: ${runId}`,
     };
+}
+function promptAttachmentsFromMetadata(value) {
+    if (!Array.isArray(value))
+        return [];
+    return value
+        .filter((item) => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+        .map((item) => ({
+        name: typeof item.name === "string" && item.name ? item.name : "file",
+        ...(typeof item.type === "string" ? { type: item.type } : {}),
+        ...(typeof item.size === "number" ? { size: item.size } : {}),
+        ...(typeof item.text === "string" ? { text: item.text } : {}),
+        ...(typeof item.dataUrl === "string" ? { dataUrl: item.dataUrl } : {}),
+    }));
 }
 function currentBackgroundRun(runId) {
     const run = getCodeAgentRunRecord(runId);

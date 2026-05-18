@@ -713,16 +713,21 @@ export function useVoiceDictation(options) {
         const prefs = await readVoicePrefs();
         const pref = prefs.provider;
         setProvider(pref);
-        // Server providers all use the same client-side flow as "openai"
-        // (MediaRecorder -> POST to /_agent-native/transcribe-voice).
-        // The server route handles routing to the right backend.
-        const resolvedProvider = pref === "auto" ||
-            pref === "builder" ||
-            pref === "builder-gemini" ||
-            pref === "gemini" ||
-            pref === "groq"
-            ? "openai"
-            : pref;
+        // In "auto" mode, prefer browser-native SpeechRecognition when available.
+        // It requires no server-side API key, streams words incrementally into the
+        // composer, and matches the macros-app record-button experience. Fall back
+        // to the server upload path only when SpeechRecognition isn't supported.
+        // Explicit server providers (builder, gemini, groq, openai) always use the
+        // MediaRecorder → server upload path regardless.
+        const resolvedProvider = pref === "auto" && speechSupported
+            ? "browser"
+            : pref === "auto" ||
+                pref === "builder" ||
+                pref === "builder-gemini" ||
+                pref === "gemini" ||
+                pref === "groq"
+                ? "openai"
+                : pref;
         activeProviderRef.current = resolvedProvider;
         try {
             if (resolvedProvider === "openai") {
@@ -752,6 +757,7 @@ export function useVoiceDictation(options) {
         }
     }, [
         state,
+        speechSupported,
         mediaRecorderSupported,
         startOpenAi,
         startGoogleRealtime,

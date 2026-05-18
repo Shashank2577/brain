@@ -10,9 +10,12 @@
  *   DELETE /_agent-native/mcp/servers/:id       remove a server (scope via ?scope=)
  *   POST   /_agent-native/mcp/servers/:id/test  dry-run connect (no persist)
  *   POST   /_agent-native/mcp/servers/test      dry-run a URL before persisting
+ *   GET    /_agent-native/mcp/builtin           list built-in capability toggles
+ *   POST   /_agent-native/mcp/builtin           update built-in capability toggles
  */
 import type { McpClientManager } from "./manager.js";
 import type { McpConfig } from "./config.js";
+import { type BuiltinMcpCapability, type BuiltinMcpCapabilityId } from "./builtin-capabilities.js";
 import { type RemoteMcpScope } from "./remote-store.js";
 export { formatMcpConnectError } from "./errors.js";
 export interface ClientServer {
@@ -29,6 +32,30 @@ export interface ClientServer {
     mergedId: string;
     status: ServerStatus;
 }
+export interface ClientBuiltinCapability {
+    id: BuiltinMcpCapabilityId;
+    serverId: string;
+    name: string;
+    description: string;
+    command: string;
+    args: string[];
+    exclusiveGroup?: string;
+    available: boolean;
+    unavailableReason?: string;
+    notes?: string;
+    enabled: {
+        user: boolean;
+        org: boolean;
+    };
+    mergedIds: {
+        user?: string;
+        org?: string;
+    };
+    status: {
+        user?: ServerStatus;
+        org?: ServerStatus;
+    };
+}
 type ServerStatus = {
     state: "connected";
     toolCount: number;
@@ -38,6 +65,7 @@ type ServerStatus = {
 } | {
     state: "unknown";
 };
+export declare function builtinMergedConfigKey(scope: RemoteMcpScope, capability: BuiltinMcpCapability, ownerId: string): string;
 /**
  * Build the merged MCP config the manager should run with: file/env config
  * plus **every** user-scope and org-scope remote server persisted in the

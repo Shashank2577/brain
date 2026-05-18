@@ -25,7 +25,7 @@ declare const ChartStyle: ({ id, config }: {
     config: ChartConfig;
 }) => import("react/jsx-runtime").JSX.Element;
 declare const ChartTooltip: typeof RechartsPrimitive.Tooltip;
-declare const ChartTooltipContent: React.ForwardRefExoticComponent<Omit<Omit<RechartsPrimitive.DefaultTooltipContentProps<string | number, string>, "payload" | "active" | "label" | "viewBox" | "coordinate" | "accessibilityLayer"> & {
+declare const ChartTooltipContent: React.ForwardRefExoticComponent<Omit<Omit<RechartsPrimitive.DefaultTooltipContentProps<string | number, string>, "payload" | "label" | "active" | "viewBox" | "coordinate" | "accessibilityLayer"> & {
     active?: boolean;
     allowEscapeViewBox?: import("recharts/types/util/types").AllowInDimension;
     animationDuration?: import("recharts/types/util/types").AnimationDuration;

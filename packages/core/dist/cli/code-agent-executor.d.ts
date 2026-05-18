@@ -1,5 +1,6 @@
 import type { AgentEngine } from "../agent/engine/types.js";
 import { type ReasoningEffort } from "../shared/reasoning-effort.js";
+import { type AgentPromptAttachment } from "../code-agents/prompt-attachments.js";
 import { type CodeAgentRunRecord } from "./code-agent-runs.js";
 export interface ExecuteCodeAgentRunOptions {
     runId: string;
@@ -8,6 +9,7 @@ export interface ExecuteCodeAgentRunOptions {
     engine?: AgentEngine;
     model?: string;
     reasoningEffort?: ReasoningEffort;
+    attachments?: AgentPromptAttachment[];
     stdout?: NodeJS.WritableStream;
     signal?: AbortSignal;
 }

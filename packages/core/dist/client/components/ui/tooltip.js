@@ -11,7 +11,7 @@ function normalizeTooltipText(text) {
 }
 const TooltipContent = React.forwardRef(({ className, sideOffset = 6, children, ...props }, ref) => {
     const normalizedChildren = typeof children === "string" ? normalizeTooltipText(children) : children;
-    return (_jsx(TooltipPrimitive.Portal, { children: _jsx(TooltipPrimitive.Content, { ref: ref, sideOffset: sideOffset, className: cn("z-[300] overflow-hidden rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-foreground shadow-md animate-in fade-in-0 zoom-in-95", className), ...props, children: normalizedChildren }) }));
+    return (_jsx(TooltipPrimitive.Portal, { children: _jsx(TooltipPrimitive.Content, { ref: ref, sideOffset: sideOffset, "data-agent-native-tooltip": "true", className: cn("z-[300] overflow-hidden rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-foreground shadow-md animate-in fade-in-0 zoom-in-95", className), ...props, children: normalizedChildren }) }));
 });
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, normalizeTooltipText, };

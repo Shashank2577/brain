@@ -1,11 +1,13 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState, } from "react";
-import { AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useAui, useComposer, useLocalRuntime, } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, ThreadPrimitive, useAui, useComposer, useLocalRuntime, } from "@assistant-ui/react";
 import { CompositeAttachmentAdapter, SimpleImageAttachmentAdapter, } from "@assistant-ui/react";
 import { IconX } from "@tabler/icons-react";
 import { cn } from "../utils.js";
-import { TiptapComposer } from "./TiptapComposer.js";
+import { AgentComposerFrame } from "./AgentComposerFrame.js";
+import { TiptapComposer, } from "./TiptapComposer.js";
 import { useChatModels } from "../use-chat-models.js";
+import { TooltipProvider } from "../components/ui/tooltip.js";
 import { isPastedTextAttachmentName } from "./pasted-text.js";
 import { PastedTextChip } from "./PastedTextChip.js";
 import { PROMPT_DOCUMENT_ATTACHMENT_ACCEPT, TextAttachmentAdapter, } from "./attachment-accept.js";
@@ -161,7 +163,7 @@ function AttachmentChip({ attachment, onRemove, }) {
         return _jsx(PastedTextChip, { attachment: attachment, onRemove: onRemove });
     }
     if (src) {
-        return (_jsxs(_Fragment, { children: [_jsxs("button", { type: "button", onClick: () => setPreviewOpen(true), "aria-label": `Preview ${attachment.name}`, className: "group relative flex h-16 min-w-16 max-w-28 cursor-zoom-in items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted/50", children: [_jsx("img", { src: src, alt: attachment.name, className: "max-h-full max-w-full object-contain p-1" }), _jsx("span", { role: "button", tabIndex: 0, onClick: (e) => {
+        return (_jsxs(_Fragment, { children: [_jsxs("button", { type: "button", onClick: () => setPreviewOpen(true), "aria-label": `Preview ${attachment.name}`, className: "agent-composer-attachment-image group relative flex h-16 min-w-16 max-w-28 cursor-zoom-in items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted/50", children: [_jsx("img", { src: src, alt: attachment.name, className: "max-h-full max-w-full object-contain p-1" }), _jsx("span", { role: "button", tabIndex: 0, onClick: (e) => {
                                 e.stopPropagation();
                                 onRemove(attachment.id);
                             }, onKeyDown: (e) => {
@@ -172,7 +174,7 @@ function AttachmentChip({ attachment, onRemove, }) {
                                 }
                             }, "aria-label": `Remove ${attachment.name}`, className: "absolute right-1 top-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-border/60 bg-background/90 text-muted-foreground hover:text-foreground", children: _jsx(IconX, { className: "h-3 w-3" }) })] }), previewOpen ? (_jsx(ImagePreviewLightbox, { src: src, alt: attachment.name, onClose: () => setPreviewOpen(false) })) : null] }));
     }
-    return (_jsxs("div", { className: "group relative inline-flex max-w-[200px] items-center gap-2 rounded-md border border-border/70 bg-muted/50 px-2 py-1.5 text-xs", children: [_jsx("div", { className: "flex h-6 w-6 shrink-0 items-center justify-center rounded bg-background text-[9px] font-semibold uppercase text-muted-foreground", children: attachment.name.split(".").pop() || "file" }), _jsx("span", { className: "min-w-0 truncate font-medium", children: attachment.name }), _jsx("button", { type: "button", onClick: () => onRemove(attachment.id), "aria-label": `Remove ${attachment.name}`, className: "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground", children: _jsx(IconX, { className: "h-3 w-3" }) })] }));
+    return (_jsxs("div", { className: "agent-composer-attachment-chip group relative inline-flex max-w-[200px] items-center gap-2 rounded-md border border-border/70 bg-muted/50 px-2 py-1.5 text-xs", children: [_jsx("div", { className: "flex h-6 w-6 shrink-0 items-center justify-center rounded bg-background text-[9px] font-semibold uppercase text-muted-foreground", children: attachment.name.split(".").pop() || "file" }), _jsx("span", { className: "min-w-0 truncate font-medium", children: attachment.name }), _jsx("button", { type: "button", onClick: () => onRemove(attachment.id), "aria-label": `Remove ${attachment.name}`, className: "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground", children: _jsx(IconX, { className: "h-3 w-3" }) })] }));
 }
 function PromptAttachmentStrip() {
     const attachments = useComposer((state) => state.attachments);
@@ -182,12 +184,34 @@ function PromptAttachmentStrip() {
     }, [aui]);
     if (attachments.length === 0)
         return null;
-    return (_jsx("div", { className: "flex flex-wrap gap-2 px-2 pt-2", children: attachments.map((attachment) => (_jsx(AttachmentChip, { attachment: attachment, onRemove: handleRemove }, attachment.id))) }));
+    return (_jsx("div", { className: "agent-composer-attachment-strip flex flex-wrap gap-2 px-2 pt-2", children: attachments.map((attachment) => (_jsx(AttachmentChip, { attachment: attachment, onRemove: handleRemove }, attachment.id))) }));
 }
-function PromptComposerInner({ onSubmit, placeholder, disabled, autoFocus, className, draftScope, preserveDraftOnSubmit = false, showModelSelector = true, voiceEnabled = true, attachmentsEnabled = true, onTextChange, composerRef, }) {
+function PromptComposerInner({ onSubmit, placeholder, disabled, autoFocus, className, style, rootClassName, rootStyle, draftScope, preserveDraftOnSubmit = false, showModelSelector = true, voiceEnabled = true, attachmentsEnabled = true, plusMenuMode, initialText, initialTextKey, modeControl, toolbarSlot, actionButton, extraActionButton, layoutVariant, slashCommands, slashSkills, includeDefaultSlashCommands, includeDefaultSlashSkills, onSlashCommand, availableModels, selectedModel, selectedEngine, selectedEffort, onModelChange, onEffortChange, modelStatusChecksEnabled, onTextChange, onConnectProvider, composerRef, }) {
     const localRef = useRef(null);
     const handleRef = composerRef ?? localRef;
-    const models = useChatModels();
+    const hostManagedModels = Boolean(availableModels && selectedModel && onModelChange);
+    const resolvedModelStatusChecksEnabled = modelStatusChecksEnabled ?? !hostManagedModels;
+    const models = useChatModels({
+        enabled: showModelSelector && resolvedModelStatusChecksEnabled,
+    });
+    const composerModel = showModelSelector
+        ? (selectedModel ?? models.selectedModel)
+        : undefined;
+    const composerEngine = showModelSelector
+        ? (selectedEngine ?? models.selectedEngine)
+        : undefined;
+    const composerEffort = showModelSelector
+        ? (selectedEffort ?? models.selectedEffort)
+        : undefined;
+    const composerModelGroups = showModelSelector
+        ? (availableModels ?? models.availableModels)
+        : undefined;
+    const handleModelChange = showModelSelector
+        ? (onModelChange ?? models.onModelChange)
+        : undefined;
+    const handleEffortChange = showModelSelector
+        ? (onEffortChange ?? models.onEffortChange)
+        : undefined;
     useEffect(() => {
         if (!autoFocus)
             return;
@@ -199,7 +223,7 @@ function PromptComposerInner({ onSubmit, placeholder, disabled, autoFocus, class
         }, 50);
         return () => window.clearTimeout(id);
     }, [autoFocus, handleRef]);
-    const handleSubmit = useCallback(async (text, references, attachments) => {
+    const handleSubmit = useCallback(async (text, references, attachments, submitOptions) => {
         // PromptComposer hosts (NewWorkspaceAppFlow, create-extension, create-deck,
         // …) submit a single string prompt — they don't run the assistant-ui
         // attachment send pipeline. TiptapComposer auto-converts large pastes
@@ -211,18 +235,13 @@ function PromptComposerInner({ onSubmit, placeholder, disabled, autoFocus, class
             attachments,
         });
         onSubmit(finalText, files, references, {
-            model: showModelSelector ? models.selectedModel : undefined,
-            engine: showModelSelector ? models.selectedEngine : undefined,
-            effort: showModelSelector ? models.selectedEffort : undefined,
+            intent: submitOptions?.intent ?? "immediate",
+            model: composerModel,
+            engine: composerEngine,
+            effort: composerEffort,
         });
-    }, [
-        models.selectedEffort,
-        models.selectedEngine,
-        models.selectedModel,
-        onSubmit,
-        showModelSelector,
-    ]);
-    return (_jsx("div", { className: cn("agent-composer-area flex flex-col rounded-lg border border-input bg-background text-left focus-within:ring-1 focus-within:ring-ring", className), children: _jsxs(ComposerPrimitive.Root, { className: "flex flex-col", children: [_jsx(PromptAttachmentStrip, {}), _jsx(TiptapComposer, { focusRef: handleRef, disabled: disabled, placeholder: placeholder, onSubmit: handleSubmit, clearOnSubmit: !preserveDraftOnSubmit, plusMenuMode: attachmentsEnabled ? "upload-only" : "hidden", voiceEnabled: voiceEnabled, onTextChange: onTextChange, draftScope: draftScope, selectedModel: showModelSelector ? models.selectedModel : undefined, selectedEffort: showModelSelector ? models.selectedEffort : undefined, availableModels: showModelSelector ? models.availableModels : undefined, onModelChange: showModelSelector ? models.onModelChange : undefined, onEffortChange: showModelSelector ? models.onEffortChange : undefined })] }) }));
+    }, [composerEffort, composerEngine, composerModel, onSubmit]);
+    return (_jsxs(AgentComposerFrame, { className: cn("text-left", className), rootClassName: rootClassName, style: style, rootStyle: rootStyle, layoutVariant: layoutVariant, children: [_jsx(PromptAttachmentStrip, {}), _jsx(TiptapComposer, { focusRef: handleRef, disabled: disabled, placeholder: placeholder, initialText: initialText, initialTextKey: initialTextKey, onSubmit: handleSubmit, clearOnSubmit: !preserveDraftOnSubmit, plusMenuMode: plusMenuMode ?? (attachmentsEnabled ? "upload-only" : "hidden"), modeControl: modeControl, toolbarSlot: toolbarSlot, actionButton: actionButton, extraActionButton: extraActionButton, layoutVariant: layoutVariant, slashCommands: slashCommands, slashSkills: slashSkills, includeDefaultSlashCommands: includeDefaultSlashCommands, includeDefaultSlashSkills: includeDefaultSlashSkills, onSlashCommand: onSlashCommand, voiceEnabled: voiceEnabled, onTextChange: onTextChange, draftScope: draftScope, selectedModel: composerModel, selectedEffort: composerEffort, availableModels: composerModelGroups, onModelChange: handleModelChange, onEffortChange: handleEffortChange, providerConnectStatusEnabled: resolvedModelStatusChecksEnabled, onConnectProvider: onConnectProvider })] }));
 }
 /**
  * Standalone composer that mirrors the agent sidebar's input experience —
@@ -244,6 +263,6 @@ export function PromptComposer(props) {
     const runtime = useLocalRuntime(NOOP_ADAPTER, {
         adapters: { attachments: attachmentAdapter },
     });
-    return (_jsx(AssistantRuntimeProvider, { runtime: runtime, children: _jsx(ThreadPrimitive.Root, { className: "contents", children: _jsx(PromptComposerInner, { ...props }) }) }));
+    return (_jsx(TooltipProvider, { delayDuration: 200, children: _jsx(AssistantRuntimeProvider, { runtime: runtime, children: _jsx(ThreadPrimitive.Root, { className: "contents", style: { display: "contents" }, children: _jsx(PromptComposerInner, { ...props }) }) }) }));
 }
 //# sourceMappingURL=PromptComposer.js.map

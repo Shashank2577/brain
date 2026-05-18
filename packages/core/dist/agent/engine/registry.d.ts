@@ -105,18 +105,21 @@ export interface ResolveEngineConfig {
     apiKey?: string;
     /** Model override (used as part of engine config) */
     model?: string;
+    /** App/template id used for org-scoped per-app model defaults. */
+    appId?: string;
 }
 /**
- * Resolve an AgentEngine from options → explicit env → request credentials →
- * settings → env → default.
+ * Resolve an AgentEngine from options → explicit env → app default →
+ * request credentials → settings → env → default.
  *
  * Resolution order:
  * 1. Explicit `engineOption` from plugin options (string name, instance, or {name, config})
  * 2. Env var AGENT_ENGINE
- * 3. Current request's app_secrets; Builder wins by default when connected
- * 4. Settings store key "agent-engine" → { engine: string }, when usable
- * 5. Auto-detect deployment env credentials
- * 6. Default "anthropic" (requires ANTHROPIC_API_KEY)
+ * 3. Org/user app-template default, when usable
+ * 4. Current request's app_secrets; Builder wins by default when connected
+ * 5. Settings store key "agent-engine" → { engine: string }, when usable
+ * 6. Auto-detect deployment env credentials
+ * 7. Default "anthropic" (requires ANTHROPIC_API_KEY)
  */
 export declare function resolveEngine(config: ResolveEngineConfig): Promise<AgentEngine>;
 /**
@@ -131,5 +134,7 @@ export declare function resolveEngine(config: ResolveEngineConfig): Promise<Agen
  * — otherwise returns `undefined` to avoid applying an Anthropic model string
  * to, say, an OpenRouter engine.
  */
-export declare function getStoredModelForEngine(engine: AgentEngine | string): Promise<string | undefined>;
+export declare function getStoredModelForEngine(engine: AgentEngine | string, options?: {
+    appId?: string;
+}): Promise<string | undefined>;
 //# sourceMappingURL=registry.d.ts.map

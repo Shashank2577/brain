@@ -11,6 +11,8 @@ export interface WorkspacifyOptions {
     workspaceCoreName: string;
     /** Version range to use for the published @agent-native/core package */
     coreDependencyVersion?: string;
+    /** Version range to use for the package-backed Dispatch app */
+    dispatchDependencyVersion?: string;
 }
 export declare function workspacifyApp(opts: WorkspacifyOptions): void;
 /**

@@ -4,10 +4,10 @@
  * List resources stored in the SQL resource store.
  *
  * Usage:
- *   pnpm action resource-list [--prefix <path>] [--scope personal|shared|all] [--format json|text]
+ *   pnpm action resource-list [--prefix <path>] [--scope personal|shared|workspace|all] [--format json|text] [--include-agent-scratch true]
  */
 import { parseArgs, fail } from "../utils.js";
-import { resourceList, resourceListAccessible, ensurePersonalDefaults, SHARED_OWNER, } from "../../resources/store.js";
+import { resourceList, resourceListAccessible, ensurePersonalDefaults, SHARED_OWNER, WORKSPACE_OWNER, } from "../../resources/store.js";
 import { getRequestUserEmail } from "../../server/request-context.js";
 export default async function resourceListScript(args) {
     const parsed = parseArgs(args);
@@ -16,31 +16,51 @@ export default async function resourceListScript(args) {
 
 Options:
   --prefix <path>              Filter by path prefix
-  --scope personal|shared|all  Scope to list (default: all)
+  --scope personal|shared|workspace|all
+                               Scope to list (default: all)
   --format json|text           Output format (default: text)
+  --include-agent-scratch true Include hidden agent scratch files
   --help                       Show this help message`);
         return;
     }
     const prefix = parsed.prefix;
     const scope = parsed.scope ?? "all";
     const format = parsed.format ?? "text";
+    const includeAgentScratch = parsed["include-agent-scratch"] === "true" ||
+        parsed.includeAgentScratch === "true" ||
+        parsed.includeScratch === "true";
     const owner = getRequestUserEmail() ?? process.env.AGENT_USER_EMAIL;
     if (!owner) {
         fail("resource-list requires an authenticated user (request context or AGENT_USER_EMAIL env var).");
     }
     // Seed personal AGENTS.md + LEARNINGS.md on first access
-    if (scope !== "shared") {
+    if (scope !== "shared" && scope !== "workspace") {
         await ensurePersonalDefaults(owner);
     }
     let resources;
     if (scope === "personal") {
-        resources = await resourceList(owner, prefix);
+        resources = includeAgentScratch
+            ? await resourceList(owner, prefix, { includeAgentScratch: true })
+            : await resourceList(owner, prefix);
     }
     else if (scope === "shared") {
-        resources = await resourceList(SHARED_OWNER, prefix);
+        resources = includeAgentScratch
+            ? await resourceList(SHARED_OWNER, prefix, { includeAgentScratch: true })
+            : await resourceList(SHARED_OWNER, prefix);
+    }
+    else if (scope === "workspace") {
+        resources = includeAgentScratch
+            ? await resourceList(WORKSPACE_OWNER, prefix, {
+                includeAgentScratch: true,
+            })
+            : await resourceList(WORKSPACE_OWNER, prefix);
     }
     else {
-        resources = await resourceListAccessible(owner, prefix);
+        resources = includeAgentScratch
+            ? await resourceListAccessible(owner, prefix, {
+                includeAgentScratch: true,
+            })
+            : await resourceListAccessible(owner, prefix);
     }
     if (format === "json") {
         console.log(JSON.stringify(resources, null, 2));
@@ -53,7 +73,11 @@ Options:
     }
     console.log(`Resources: ${resources.length}\n`);
     for (const r of resources) {
-        const ownerLabel = r.owner === SHARED_OWNER ? "[shared]" : `[${r.owner}]`;
+        const ownerLabel = r.owner === WORKSPACE_OWNER
+            ? "[workspace]"
+            : r.owner === SHARED_OWNER
+                ? "[shared]"
+                : `[${r.owner}]`;
         const sizeLabel = r.size != null ? ` (${r.size} bytes)` : "";
         console.log(`  ${r.path}  ${ownerLabel}${sizeLabel}  ${r.mimeType}`);
     }

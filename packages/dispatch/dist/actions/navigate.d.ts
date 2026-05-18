@@ -5,6 +5,7 @@
  *
  * Usage:
  *   pnpm action navigate --view=overview
+ *   pnpm action navigate --view=dreams
  *   pnpm action navigate --view=<custom-dispatch-extension-id>
  *   pnpm action navigate --path=/some/route
  *

@@ -13,7 +13,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useCallback, useEffect, useState } from "react";
 import { agentNativePath } from "../api-path.js";
 import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight, IconExternalLink, IconLoader2, IconLockOpen, IconMicrophone, } from "@tabler/icons-react";
-import { useBuilderStatus } from "./useBuilderStatus.js";
+import { openBuilderConnectPopup, useBuilderStatus, } from "./useBuilderStatus.js";
 const PREFS_URL = agentNativePath("/_agent-native/application-state/voice-transcription-prefs");
 const CLEANUP_PREFS_URL = agentNativePath("/_agent-native/application-state/voice-cleanup-prefs");
 const SECRETS_URL = agentNativePath("/_agent-native/secrets");
@@ -241,10 +241,11 @@ export function VoiceTranscriptionSection() {
         void persist(next, nextProvider, instructions, previous);
     };
     const openBuilderConnect = () => {
-        if (typeof window === "undefined")
-            return;
-        const url = new URL(agentNativePath("/_agent-native/builder/connect"), window.location.origin).href;
-        window.open(url, "_blank", "noopener,noreferrer,width=600,height=700");
+        openBuilderConnectPopup({
+            url: builderStatus?.cliAuthUrl ?? builderStatus?.connectUrl,
+            source: "voice_transcription_settings",
+            features: "noopener,noreferrer,width=600,height=700",
+        });
     };
     const chooseBatchProvider = (next) => {
         const nextProvider = batchProvider(normalizeProvider(next));

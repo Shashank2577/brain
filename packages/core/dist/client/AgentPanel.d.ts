@@ -17,13 +17,13 @@
  *   // In a popover
  *   <Popover><AgentPanel suggestions={[...]} /></Popover>
  *
- *   // Full page
- *   <AgentPanel className="h-screen" />
+ *   // Full page chat surface
+ *   <AgentChatSurface mode="page" className="h-screen" />
  */
 import React from "react";
-import type { AssistantChatProps } from "./AssistantChat.js";
+import { type AssistantChatProps } from "./AssistantChat.js";
 export interface AgentPanelCodeAccess {
-    /** Whether this surface can safely edit source, access workspace files, and run shell commands. */
+    /** Whether this surface can safely edit source and run shell commands. */
     enabled: boolean;
     /** Heading shown when code access is unavailable. */
     unavailableTitle?: string;
@@ -63,18 +63,39 @@ export interface AgentPanelProps extends Omit<AssistantChatProps, "onSwitchToCli
      * from the current route — see the `Layout` files for each template.
      */
     scope?: import("./use-chat-threads.js").ChatThreadScope | null;
+    /** Stable browser tab id used for tab-scoped app-state context. */
+    browserTabId?: string;
     /** Optional notice rendered below the main header while Chat mode is active. */
     chatNotice?: React.ReactNode;
-    /** Capability gate for source edits, workspace files, and CLI access. */
+    /** Capability gate for source edits and CLI access. */
     codeAccess?: AgentPanelCodeAccess;
 }
 export declare function AgentPanel(props: AgentPanelProps): import("react/jsx-runtime").JSX.Element;
+export type AgentChatSurfaceMode = "panel" | "page";
+export interface AgentChatSurfaceProps extends AgentPanelProps {
+    /**
+     * Layout treatment for the reusable chat surface. Use "page" when rendering
+     * chat as the primary route content instead of inside the sidebar shell.
+     * Default: "panel".
+     */
+    mode?: AgentChatSurfaceMode;
+}
+/**
+ * Reusable chat surface backed by AgentPanel internals.
+ *
+ * This gives page-level routes the same tabbed conversations, composer,
+ * model controls, scoped chat behavior, and recovery boundary used by the
+ * sidebar without introducing a second chat implementation.
+ */
+export declare function AgentChatSurface({ mode, className, defaultMode, isFullscreen, ...props }: AgentChatSurfaceProps): import("react/jsx-runtime").JSX.Element;
 export interface AgentSidebarProps {
     children: React.ReactNode;
     /** Placeholder text for the empty chat state */
     emptyStateText?: string;
     /** Suggestion prompts shown when no messages */
     suggestions?: string[];
+    /** Context-aware suggestions merged with `suggestions`. Enabled by default. */
+    dynamicSuggestions?: AssistantChatProps["dynamicSuggestions"];
     /** Initial sidebar width in pixels. Mount-only; user resize and a saved
      *  localStorage value override this. Default: 380 */
     defaultSidebarWidth?: number;
@@ -93,12 +114,14 @@ export interface AgentSidebarProps {
      * Templates compute this from the active route (see template layouts).
      */
     scope?: import("./use-chat-threads.js").ChatThreadScope | null;
+    /** Stable browser tab id used for tab-scoped app-state context. */
+    browserTabId?: string;
 }
 /**
  * Wraps app content with a toggleable agent sidebar.
  * Use AgentToggleButton in your header to open/close it.
  */
-export declare function AgentSidebar({ children, emptyStateText, suggestions, defaultSidebarWidth, sidebarWidth, position, defaultOpen, animateMobile, scope, }: AgentSidebarProps): import("react/jsx-runtime").JSX.Element;
+export declare function AgentSidebar({ children, emptyStateText, suggestions, dynamicSuggestions, defaultSidebarWidth, sidebarWidth, position, defaultOpen, animateMobile, scope, browserTabId, }: AgentSidebarProps): import("react/jsx-runtime").JSX.Element;
 /**
  * Focus the agent chat composer input.
  * Opens the sidebar if closed, then focuses the text input.

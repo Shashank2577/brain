@@ -97,6 +97,13 @@ export function isInBuilderFrame() {
     // preview params, and sendToBuilderChat will use the console relay.
     return hasBuilderPreviewParams();
 }
+export function shouldParentFrameOwnAgentPanel() {
+    if (typeof window === "undefined")
+        return false;
+    if (window.parent === window)
+        return false;
+    return !isInBuilderFrame();
+}
 export function isTrustedBuilderMessage(event) {
     if (typeof window === "undefined")
         return false;
@@ -108,7 +115,7 @@ export function isTrustedBuilderMessage(event) {
 export function sendToBuilderChat(opts) {
     if (typeof window === "undefined" || !opts.message?.trim())
         return false;
-    const target = window.parent !== window ? window.parent : window;
+    const hasParentFrame = window.parent !== window;
     const targetOrigin = getBuilderParentOrigin() ?? "*";
     const payload = {
         type: "builder.submitChat",
@@ -118,15 +125,18 @@ export function sendToBuilderChat(opts) {
             submit: opts.submit,
         },
     };
-    target.postMessage(payload, targetOrigin);
-    // Builder's Electron/webview relay watches console output because webviews
-    // cannot always post directly to the app frame. Keep the payload small and
-    // never include credential values in callers' context.
-    try {
-        console.log("BUILDER_PARENT_MESSAGE:" +
-            JSON.stringify({ message: payload, targetOrigin }));
+    if (hasParentFrame) {
+        window.parent.postMessage(payload, targetOrigin);
     }
-    catch { }
+    else {
+        // Builder's Electron/webview relay watches console output for top-level
+        // previews that have no parent frame to receive postMessage.
+        try {
+            console.log("BUILDER_PARENT_MESSAGE:" +
+                JSON.stringify({ message: payload, targetOrigin }));
+        }
+        catch { }
+    }
     return true;
 }
 // Detect "build/create/make/scaffold a new app/agent" style prompts.

@@ -28,10 +28,11 @@ function writePersisted(key, value) {
  * the Dispatch homepage hero composer that need an identical model picker
  * without mounting the full tabbed chat.
  */
-export function useChatModels({ storageKey = DEFAULT_STORAGE_KEY, } = {}) {
+export function useChatModels({ storageKey = DEFAULT_STORAGE_KEY, enabled = true, } = {}) {
     const [availableModels, setAvailableModels] = useState([]);
     const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
     const initialPersisted = readPersisted(storageKey);
+    const hasExplicitSelectionRef = useRef(Boolean(initialPersisted.model));
     const [selectedModel, setSelectedModel] = useState(initialPersisted.model ?? DEFAULT_MODEL);
     const [selectedEngine, setSelectedEngine] = useState(initialPersisted.engine ?? "");
     const [selectedEffort, setSelectedEffort] = useState(initialPersisted.effort ?? "auto");
@@ -48,6 +49,7 @@ export function useChatModels({ storageKey = DEFAULT_STORAGE_KEY, } = {}) {
         };
     }, [selectedEffort, selectedEngine, selectedModel]);
     const onModelChange = useCallback((model, engine) => {
+        hasExplicitSelectionRef.current = true;
         const effortOptions = getReasoningEffortOptionsForModel(model);
         setSelectedModel(model);
         setSelectedEngine(engine);
@@ -60,6 +62,7 @@ export function useChatModels({ storageKey = DEFAULT_STORAGE_KEY, } = {}) {
         });
     }, [storageKey]);
     const onEffortChange = useCallback((effort) => {
+        hasExplicitSelectionRef.current = true;
         setSelectedEffort(effort);
         writePersisted(storageKey, {
             model: selectedModel,
@@ -68,6 +71,8 @@ export function useChatModels({ storageKey = DEFAULT_STORAGE_KEY, } = {}) {
         });
     }, [selectedEngine, selectedModel, storageKey]);
     const refreshEngines = useCallback(() => {
+        if (!enabled)
+            return;
         Promise.all([
             fetch(agentNativePath("/_agent-native/actions/manage-agent-engine"), {
                 method: "POST",
@@ -177,6 +182,23 @@ export function useChatModels({ storageKey = DEFAULT_STORAGE_KEY, } = {}) {
             setAvailableModels(groups);
             setDefaultModel(nextDefaultModel);
             const selection = selectionRef.current;
+            if (!hasExplicitSelectionRef.current) {
+                const defaultGroup = groups.find((group) => group.models.includes(nextDefaultModel)) ??
+                    groups[0];
+                const nextModel = defaultGroup?.models.find((model) => model === nextDefaultModel) ??
+                    defaultGroup?.models[0] ??
+                    nextDefaultModel;
+                const nextEngine = defaultGroup?.engine ?? "";
+                const effortOptions = getReasoningEffortOptionsForModel(nextModel);
+                const nextEffort = selection.selectedEffort === "auto" ||
+                    effortOptions.includes(selection.selectedEffort)
+                    ? selection.selectedEffort
+                    : "auto";
+                setSelectedModel(nextModel);
+                setSelectedEngine(nextEngine);
+                setSelectedEffort(nextEffort);
+                return;
+            }
             const selectedGroup = groups.find((group) => group.models.includes(selection.selectedModel) &&
                 (!selection.selectedEngine ||
                     group.engine === selection.selectedEngine));
@@ -203,10 +225,12 @@ export function useChatModels({ storageKey = DEFAULT_STORAGE_KEY, } = {}) {
             }
         })
             .catch(() => { });
-    }, [storageKey]);
+    }, [enabled, storageKey]);
     useEffect(() => {
+        if (!enabled)
+            return;
         refreshEngines();
-    }, [refreshEngines]);
+    }, [enabled, refreshEngines]);
     return {
         availableModels,
         defaultModel,

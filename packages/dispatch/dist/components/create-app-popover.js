@@ -22,9 +22,11 @@ function titleFromPrompt(prompt) {
 }
 function buildAppCreationPrompt(input) {
     const keyList = input.selectedKeys.join(", ");
-    const grantRequest = keyList
-        ? `Requested Dispatch vault key grants for this app: ${keyList}`
-        : `Requested Dispatch vault key grants for this app: none`;
+    const grantRequest = input.vaultAccessMode === "all-apps"
+        ? `Dispatch vault access: all saved vault keys are available to every workspace app by default. No per-app vault grants are needed.`
+        : keyList
+            ? `Requested Dispatch vault key grants for this app: ${keyList}`
+            : `Requested Dispatch vault key grants for this app: none`;
     const resourceList = input.selectedResources.length
         ? input.selectedResources
             .map((resource) => `- ${resource.name} (${resource.kind}, ${resource.path})`)
@@ -36,32 +38,36 @@ function buildAppCreationPrompt(input) {
         ``,
         `Suggested app name: ${input.appId} (you may adjust the slug if it conflicts)`,
         `User prompt: ${input.prompt.trim()}`,
+        `Generate a concise one-sentence app description from the user prompt before coding; save it in apps/${input.appId}/package.json "description" so Dispatch and A2A can describe the app.`,
         `If the user mentions a product or company such as Granola, Loom, Superhuman, Linear, or Notion, treat it as product inspiration unless they explicitly ask to connect to that service. Do not invent or require third-party API keys like GRANOLA_API_KEY just because a product is named.`,
         grantRequest,
         `Requested Dispatch workspace resources for this app:\n${resourceList}`,
+        `Dispatch workspace resources with scope=all are inherited workspace context. Do not copy or sync them into the new app; every workspace app reads them at runtime and may override with app shared or personal resources.`,
         ``,
-        `Pick a starter template that fits the user's prompt — analytics, calendar, content, design, dispatch, forms, mail, slides, clips, or starter when none of the others fit.`,
+        `Pick a starter template that fits the user's prompt — analytics, brain, calendar, content, design, dispatch, forms, mail, slides, clips, or starter when none of the others fit.`,
         `Use the workspace app layout: create it under apps/${input.appId}, mount it at /${input.appId}, keep it on the shared workspace database/hosting model, and avoid table-name collisions by namespacing any new domain tables to the app.`,
         `Important routing rule: from outside the app, link to /${input.appId}; inside apps/${input.appId}, React Router routes are app-local. Use <Link to="/review"> and navigate("/review"), not "/${input.appId}/review"; APP_BASE_PATH supplies the mounted prefix, and hardcoding it causes doubled URLs like /${input.appId}/${input.appId}/review.`,
         `Prefer useActionQuery/useActionMutation for actions. If you must raw-fetch framework endpoints, wrap them with agentNativePath("/_agent-native/actions/<name>") so mounted apps call the right URL.`,
         `Use relative workspace links like /${input.appId}. Do not hardcode localhost, 127.0.0.1, 8080, 8100, or any dev port; the active workspace gateway/browser origin owns the port.`,
         `Use the framework/template UI stack: shadcn/ui components and @tabler/icons-react. Do not add lucide-react or another icon library for standard UI.`,
-        `Existing first-party apps are neighbors, not implementation details for this app. If the user's prompt mentions Mail, Calendar, Analytics, Dispatch, or other templates, treat them as existing hosted/connected apps that this app can link to or call through A2A/default connected agents. For example, Mail, Calendar, and Analytics already exist at https://mail.agent-native.com, https://calendar.agent-native.com, and https://analytics.agent-native.com.`,
-        `Do not clone first-party templates, create wrapper apps, or scaffold child apps/routes for Mail, Calendar, Analytics, etc. inside apps/${input.appId} just so this app can access them. If the request is a cross-app dashboard or overview, build only the new dashboard/overview app and delegate to the existing apps for domain work.`,
+        `Existing first-party apps are neighbors, not implementation details for this app. If the user's prompt mentions Mail, Calendar, Analytics, Brain, Dispatch, or other templates, treat them as existing hosted/connected apps that this app can link to or call through A2A/default connected agents. For example, Mail, Calendar, Analytics, and Brain already exist at https://mail.agent-native.com, https://calendar.agent-native.com, https://analytics.agent-native.com, and https://brain.agent-native.com.`,
+        `Do not clone first-party templates, create wrapper apps, or scaffold child apps/routes for Mail, Calendar, Analytics, Brain, etc. inside apps/${input.appId} just so this app can access them. If the request is a cross-app dashboard or overview, build only the new dashboard/overview app and delegate to the existing apps for domain work.`,
         `Only create another first-party app copy when the user explicitly asks for a customized fork/copy of that app; otherwise keep using the hosted/shared app so improvements to the base template keep flowing to users.`,
         `Do not satisfy this by adding a route, page, component, or file inside apps/starter or another existing app unless the user explicitly asks to modify that existing app.`,
-        keyList
-            ? `After the app exists, grant the selected Dispatch vault keys to appId "${input.appId}" and sync them once the app server is available. Treat these as requested grants, not active grants before creation succeeds.`
-            : `Do not grant any Dispatch vault keys unless the user asks later.`,
+        input.vaultAccessMode === "all-apps"
+            ? `Do not create per-app Dispatch vault grants unless the workspace switches vault access to manual or the user explicitly asks for manual grants.`
+            : keyList
+                ? `After the app exists, grant the selected Dispatch vault keys to appId "${input.appId}" and sync them once the app server is available. Treat these as requested grants, not active grants before creation succeeds.`
+                : `Do not grant any Dispatch vault keys unless the user asks later.`,
         input.selectedResources.length
-            ? `After the app exists, grant the selected Dispatch workspace resources to appId "${input.appId}" and sync them once the app server is available. Add a short note to apps/${input.appId}/AGENTS.md telling the app agent to read relevant shared resources under context/ or the selected resource paths before doing GTM/domain work.`
-            : `Do not grant any Dispatch workspace resources unless the user asks later.`,
+            ? `After the app exists, grant the selected Dispatch workspace resources to appId "${input.appId}". Do not sync All-app workspace resources; they are inherited.`
+            : `Do not grant any selected-only Dispatch workspace resources unless the user asks later.`,
         ``,
         `App readiness requirements before handing off:`,
-        `- Ensure apps/${input.appId}/package.json exists; Dispatch discovers workspace apps from apps/<app-id>/package.json, not a separate app registry.`,
+        `- Ensure apps/${input.appId}/package.json exists with displayName/name and a concise description; Dispatch discovers workspace apps from apps/<app-id>/package.json, not a separate app registry.`,
         `- Update the app manifest/package/deploy metadata needed by the existing workspace deployment model.`,
         `- Ensure the React Router client entry preserves APP_BASE_PATH/VITE_APP_BASE_PATH via appBasePath() so /${input.appId} hydrates correctly.`,
-        `- Verify the app's agent card/A2A metadata is ready so Dispatch can discover and delegate to the app after deployment.`,
+        `- Verify the app's agent card/A2A metadata is ready so Dispatch can discover and delegate to the app after deployment. Every sibling workspace app is available over A2A by default through call-agent, with names and descriptions from the workspace app registry.`,
         `When it is ready, start or update the workspace dev server and navigate the user to the absolute path /${input.appId} on the workspace origin. Do not prefix with /dispatch/, /apps/, /workspace/, or any other Dispatch tab — the new app is mounted at the workspace root, not under Dispatch. If you have a navigate tool available, pass /${input.appId} verbatim; if you only have a window.location-style escape hatch, set it to /${input.appId}.`,
     ].join("\n");
 }
@@ -98,6 +104,7 @@ export function CreateAppFlow({ onClose, className = "", }) {
     const [selectedResourceIds, setSelectedResourceIds] = useState([]);
     const [secrets, setSecrets] = useState([]);
     const [resources, setResources] = useState([]);
+    const [vaultAccessMode, setVaultAccessMode] = useState("all-apps");
     const [secretsError, setSecretsError] = useState(null);
     const [resourcesError, setResourcesError] = useState(null);
     const [statusMessage, setStatusMessage] = useState(null);
@@ -121,6 +128,17 @@ export function CreateAppFlow({ onClose, className = "", }) {
             setSecrets([]);
             setSecretsError(err?.message || "Could not load Dispatch keys");
         });
+        fetchJson(actionUrl(basePath, "get-vault-access-settings"))
+            .then((data) => {
+            if (cancelled)
+                return;
+            setVaultAccessMode(data?.mode === "manual" ? "manual" : "all-apps");
+        })
+            .catch(() => {
+            if (cancelled)
+                return;
+            setVaultAccessMode("manual");
+        });
         fetchJson(actionUrl(basePath, "list-workspace-resource-options"))
             .then((data) => {
             if (cancelled)
@@ -140,9 +158,11 @@ export function CreateAppFlow({ onClose, className = "", }) {
     }, [basePath]);
     const selectedSecrets = useMemo(() => secrets.filter((s) => selectedSecretIds.includes(s.id)), [secrets, selectedSecretIds]);
     const selectedResources = useMemo(() => resources.filter((r) => selectedResourceIds.includes(r.id)), [resources, selectedResourceIds]);
-    const selectedSecretLabel = selectedSecretIds.length === 0
-        ? "no keys"
-        : `${selectedSecretIds.length} key${selectedSecretIds.length === 1 ? "" : "s"}`;
+    const selectedSecretLabel = vaultAccessMode === "all-apps"
+        ? "all keys"
+        : selectedSecretIds.length === 0
+            ? "no keys"
+            : `${selectedSecretIds.length} key${selectedSecretIds.length === 1 ? "" : "s"}`;
     const selectedResourceLabel = selectedResourceIds.length === 0
         ? "no resources"
         : `${selectedResourceIds.length} resource${selectedResourceIds.length === 1 ? "" : "s"}`;
@@ -166,8 +186,11 @@ export function CreateAppFlow({ onClose, className = "", }) {
         const message = buildAppCreationPrompt({
             appId,
             prompt: trimmed,
-            selectedKeys: selectedSecrets.map((s) => s.credentialKey),
+            selectedKeys: vaultAccessMode === "manual"
+                ? selectedSecrets.map((s) => s.credentialKey)
+                : [],
             selectedResources,
+            vaultAccessMode,
         });
         setIsSubmitting(true);
         setStatusMessage(null);
@@ -190,7 +213,9 @@ export function CreateAppFlow({ onClose, className = "", }) {
                     body: JSON.stringify({
                         prompt: trimmed,
                         appId,
-                        secretIds: selectedSecretIds.length > 0 ? selectedSecretIds : [],
+                        secretIds: vaultAccessMode === "manual" && selectedSecretIds.length > 0
+                            ? selectedSecretIds
+                            : [],
                         resourceIds: selectedResourceIds.length > 0 ? selectedResourceIds : [],
                     }),
                 });
@@ -215,7 +240,7 @@ export function CreateAppFlow({ onClose, className = "", }) {
     return (_jsxs("div", { className: `flex flex-col gap-3 ${className}`, children: [step === "prompt" ? (_jsxs(_Fragment, { children: [_jsxs("div", { className: "flex items-center justify-between gap-2 px-1", children: [_jsx("p", { className: "text-sm font-semibold text-foreground", children: "Create app" }), _jsxs("button", { type: "button", onClick: () => setStep("access"), className: "inline-flex cursor-pointer items-center gap-1 rounded-md border border-border bg-background/40 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/50", children: [_jsx(IconKey, { size: 11 }), selectedAccessLabel] })] }), _jsx(PromptComposer, { autoFocus: true, disabled: isSubmitting, placeholder: "Describe the app your teammate should be able to use...", draftScope: "dispatch:create-app", preserveDraftOnSubmit: true, onSubmit: (text) => {
                             setPrompt(text);
                             submit(text);
-                        } })] })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "flex items-center justify-between gap-2 px-1", children: [_jsxs("button", { type: "button", onClick: () => setStep("prompt"), className: "inline-flex cursor-pointer items-center gap-1 text-xs text-muted-foreground hover:text-foreground", children: [_jsx(IconArrowLeft, { size: 12 }), "Back"] }), _jsx("span", { className: "text-[11px] text-muted-foreground/70", children: selectedAccessLabel })] }), _jsxs("div", { className: "max-h-[180px] space-y-2 overflow-y-auto rounded-md border border-border bg-card p-2", children: [_jsxs("div", { className: "flex items-center gap-1.5 px-1 pb-1 text-[11px] font-medium text-muted-foreground", children: [_jsx(IconKey, { size: 12 }), "Dispatch keys"] }), secretsError ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: secretsError })) : secrets.length === 0 ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: "No Dispatch vault keys found yet." })) : (secrets.map((secret) => {
+                        } })] })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "flex items-center justify-between gap-2 px-1", children: [_jsxs("button", { type: "button", onClick: () => setStep("prompt"), className: "inline-flex cursor-pointer items-center gap-1 text-xs text-muted-foreground hover:text-foreground", children: [_jsx(IconArrowLeft, { size: 12 }), "Back"] }), _jsx("span", { className: "text-[11px] text-muted-foreground/70", children: selectedAccessLabel })] }), _jsxs("div", { className: "max-h-[180px] space-y-2 overflow-y-auto rounded-md border border-border bg-card p-2", children: [_jsxs("div", { className: "flex items-center gap-1.5 px-1 pb-1 text-[11px] font-medium text-muted-foreground", children: [_jsx(IconKey, { size: 12 }), "Dispatch keys"] }), vaultAccessMode === "all-apps" ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: "Every saved Dispatch vault key is available to new apps." })) : secretsError ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: secretsError })) : secrets.length === 0 ? (_jsx("p", { className: "rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground", children: "No Dispatch vault keys found yet." })) : (secrets.map((secret) => {
                                 const selected = selectedSecretIds.includes(secret.id);
                                 return (_jsxs("div", { className: `group rounded-md border text-sm ${selected
                                         ? "border-primary/45 bg-primary/5"

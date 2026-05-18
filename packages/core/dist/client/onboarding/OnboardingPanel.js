@@ -181,9 +181,10 @@ function FormMethod({ method, onCompleted, }) {
 // ─── builder-cli-auth ──────────────────────────────────────────────────────
 function BuilderCliAuthMethod({ onCompleted, primary, }) {
     const { connecting, error, start } = useBuilderConnectFlow({
+        trackingSource: "onboarding_builder_cli_auth",
         onConnected: onCompleted,
     });
-    return (_jsxs(_Fragment, { children: [_jsx("button", { type: "button", onClick: start, disabled: connecting, style: { ...buttonPrimary(primary), opacity: connecting ? 0.7 : 1 }, children: connecting ? (_jsxs(_Fragment, { children: [_jsx(IconLoader2, { size: 12, style: { marginRight: 4 }, className: "animate-spin" }), "Waiting for Builder..."] })) : ("Connect Builder") }), connecting && (_jsx("p", { style: styles.methodHint, children: "A Builder tab opened. Choose your team or app space there; setup will continue here automatically." })), error && _jsx("p", { style: styles.errText, children: error })] }));
+    return (_jsxs(_Fragment, { children: [_jsx("button", { type: "button", onClick: () => start(), disabled: connecting, style: { ...buttonPrimary(primary), opacity: connecting ? 0.7 : 1 }, children: connecting ? (_jsxs(_Fragment, { children: [_jsx(IconLoader2, { size: 12, style: { marginRight: 4 }, className: "animate-spin" }), "Waiting for Builder..."] })) : ("Connect Builder") }), connecting && (_jsx("p", { style: styles.methodHint, children: "A Builder tab opened. Choose your team or app space there; setup will continue here automatically." })), error && _jsx("p", { style: styles.errText, children: error })] }));
 }
 // ─── agent-task ────────────────────────────────────────────────────────────
 function AgentTaskMethod({ method, stepId: _stepId, }) {

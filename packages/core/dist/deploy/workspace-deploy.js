@@ -19,6 +19,7 @@ import fs from "fs";
 import path from "path";
 import { findWorkspaceRoot } from "../scripts/utils.js";
 import { DISPATCH_WORKSPACE_ROOT_REDIRECTS } from "../shared/workspace-app-id.js";
+import { DEFAULT_WORKSPACE_APP_AUDIENCE, normalizeWorkspaceAppAudience, normalizeWorkspaceAppPathList, workspaceAppAudienceFromPackageJson, workspaceAppRouteAccessFromPackageJson, } from "../shared/workspace-app-audience.js";
 const NETLIFY_WORKSPACE_STATIC_DIR = "_workspace_static";
 const NETLIFY_PUBLIC_ASSET_EXTENSIONS = new Set([
     "avif",
@@ -121,6 +122,8 @@ export async function runWorkspaceDeploy(opts = {}) {
 }
 function buildOneApp(workspaceRoot, app, preset, execFile, workspaceApps) {
     const appDir = path.join(workspaceRoot, "apps", app);
+    const workspaceAppAudience = workspaceAppAudienceForApp(workspaceApps, app);
+    const workspaceAppRouteAccess = workspaceAppRouteAccessForApp(workspaceApps, app);
     const workspaceGatewayUrl = process.env.VITE_WORKSPACE_GATEWAY_URL || workspaceBaseUrl();
     const workspaceOAuthUrl = workspaceOAuthOrigin(workspaceGatewayUrl);
     const env = {
@@ -130,6 +133,13 @@ function buildOneApp(workspaceRoot, app, preset, execFile, workspaceApps) {
         VITE_AGENT_NATIVE_WORKSPACE: "1",
         APP_BASE_PATH: `/${app}`,
         VITE_APP_BASE_PATH: `/${app}`,
+        AGENT_NATIVE_WORKSPACE_APP_AUDIENCE: workspaceAppAudience,
+        AGENT_NATIVE_WORKSPACE_APP_PUBLIC_PATHS: JSON.stringify(workspaceAppRouteAccess.publicPaths),
+        AGENT_NATIVE_WORKSPACE_APP_PROTECTED_PATHS: JSON.stringify(workspaceAppRouteAccess.protectedPaths),
+        VITE_AGENT_NATIVE_WORKSPACE_APP_AUDIENCE: workspaceAppAudience,
+        VITE_AGENT_NATIVE_WORKSPACE_APP_PUBLIC_PATHS: JSON.stringify(workspaceAppRouteAccess.publicPaths),
+        VITE_AGENT_NATIVE_WORKSPACE_APP_PROTECTED_PATHS: JSON.stringify(workspaceAppRouteAccess.protectedPaths),
+        VITE_AGENT_NATIVE_WORKSPACE_APPS_JSON: JSON.stringify(workspaceApps),
         ...(workspaceGatewayUrl
             ? {
                 WORKSPACE_GATEWAY_URL: process.env.WORKSPACE_GATEWAY_URL || workspaceGatewayUrl,
@@ -265,12 +275,16 @@ function writeCloudflareRoutingManifest(distDir, apps) {
         ? `    if (pathname.startsWith("/apps/")) return Response.redirect(new URL("/dispatch" + pathname + search, request.url).toString(), 302);
 `
         : "";
+    const dispatchMountedRootRedirect = apps.includes("dispatch")
+        ? `    if (pathname === "/dispatch" || pathname === "/dispatch/") return Response.redirect(new URL("/dispatch/overview" + search, request.url).toString(), 302);
+`
+        : "";
     const worker = `${imports}
 
 export default {
   async fetch(request, env, ctx) {
     const { pathname, search } = new URL(request.url);
-${dispatchRootFrameworkRoutes}${dispatchRootFaviconRoute}${dispatchRootAliasRoutes}${dispatchRootDynamicAliasRoutes}${dispatch}
+${dispatchRootFrameworkRoutes}${dispatchRootFaviconRoute}${dispatchRootAliasRoutes}${dispatchRootDynamicAliasRoutes}${dispatchMountedRootRedirect}${dispatch}
     if (pathname === "/") {
       return Response.redirect(new URL("${cloudflareRootRedirectPath(apps)}", request.url).toString(), 302);
     }
@@ -302,6 +316,7 @@ function writeNetlifyRedirects(distDir, apps) {
     if (apps.includes("dispatch")) {
         lines.push("/ /dispatch/overview 302");
         lines.push("/dispatch /dispatch/overview 302");
+        lines.push("/dispatch/ /dispatch/overview 302");
         for (const [from, to] of DISPATCH_WORKSPACE_ROOT_REDIRECTS) {
             lines.push(`/${from} /dispatch/${to} 302`);
         }
@@ -320,7 +335,7 @@ function writeVercelBuildConfig(outputDir, apps) {
         if (faviconAsset) {
             routes.push(vercelRedirect("/favicon.ico", `/dispatch/${faviconAsset}`));
         }
-        routes.push(vercelRedirect("/", "/dispatch/overview"), vercelRedirect("/dispatch", "/dispatch/overview"));
+        routes.push(vercelRedirect("/", "/dispatch/overview"), vercelRedirect("/dispatch", "/dispatch/overview"), vercelRedirect("/dispatch/", "/dispatch/overview"));
         for (const [from, to] of DISPATCH_WORKSPACE_ROOT_REDIRECTS) {
             routes.push(vercelRedirect(`/${from}`, `/dispatch/${to}`));
         }
@@ -401,6 +416,8 @@ function patchNetlifyFunctionEntry(functionDir, app, workspaceApps, staticDir) {
     if (!fs.existsSync(serverPath))
         return;
     const basePath = `/${app}`;
+    const workspaceAppAudience = workspaceAppAudienceForApp(workspaceApps, app);
+    const workspaceAppRouteAccess = workspaceAppRouteAccessForApp(workspaceApps, app);
     const pathConfig = app === "dispatch"
         ? ["/_agent-native/*", "/.well-known/*", `${basePath}/*`]
         : [basePath, `${basePath}/*`];
@@ -429,8 +446,15 @@ function setBasePathEnv() {
   Object.assign(processRef.env, {
     AGENT_NATIVE_WORKSPACE: "1",
     APP_BASE_PATH: basePath,
+    AGENT_NATIVE_WORKSPACE_APP_AUDIENCE: ${JSON.stringify(workspaceAppAudience)},
+    AGENT_NATIVE_WORKSPACE_APP_PUBLIC_PATHS: ${JSON.stringify(JSON.stringify(workspaceAppRouteAccess.publicPaths))},
+    AGENT_NATIVE_WORKSPACE_APP_PROTECTED_PATHS: ${JSON.stringify(JSON.stringify(workspaceAppRouteAccess.protectedPaths))},
     VITE_AGENT_NATIVE_WORKSPACE: "1",
     VITE_APP_BASE_PATH: basePath,
+    VITE_AGENT_NATIVE_WORKSPACE_APP_AUDIENCE: ${JSON.stringify(workspaceAppAudience)},
+    VITE_AGENT_NATIVE_WORKSPACE_APP_PUBLIC_PATHS: ${JSON.stringify(JSON.stringify(workspaceAppRouteAccess.publicPaths))},
+    VITE_AGENT_NATIVE_WORKSPACE_APP_PROTECTED_PATHS: ${JSON.stringify(JSON.stringify(workspaceAppRouteAccess.protectedPaths))},
+    VITE_AGENT_NATIVE_WORKSPACE_APPS_JSON: ${JSON.stringify(JSON.stringify(workspaceApps))},
     ${JSON.stringify(WORKSPACE_APPS_ENV_KEY)}: ${JSON.stringify(JSON.stringify(workspaceApps))},
   });
 }
@@ -469,6 +493,8 @@ function patchVercelFunctionEntry(functionDir, app, workspaceApps) {
     fs.rmSync(mainPath, { force: true });
     fs.renameSync(entryPath, mainPath);
     const basePath = `/${app}`;
+    const workspaceAppAudience = workspaceAppAudienceForApp(workspaceApps, app);
+    const workspaceAppRouteAccess = workspaceAppRouteAccessForApp(workspaceApps, app);
     const entry = `const basePath = ${JSON.stringify(basePath)};
 
 function setBasePathEnv() {
@@ -477,8 +503,15 @@ function setBasePathEnv() {
   Object.assign(processRef.env, {
     AGENT_NATIVE_WORKSPACE: "1",
     APP_BASE_PATH: basePath,
+    AGENT_NATIVE_WORKSPACE_APP_AUDIENCE: ${JSON.stringify(workspaceAppAudience)},
+    AGENT_NATIVE_WORKSPACE_APP_PUBLIC_PATHS: ${JSON.stringify(JSON.stringify(workspaceAppRouteAccess.publicPaths))},
+    AGENT_NATIVE_WORKSPACE_APP_PROTECTED_PATHS: ${JSON.stringify(JSON.stringify(workspaceAppRouteAccess.protectedPaths))},
     VITE_AGENT_NATIVE_WORKSPACE: "1",
     VITE_APP_BASE_PATH: basePath,
+    VITE_AGENT_NATIVE_WORKSPACE_APP_AUDIENCE: ${JSON.stringify(workspaceAppAudience)},
+    VITE_AGENT_NATIVE_WORKSPACE_APP_PUBLIC_PATHS: ${JSON.stringify(JSON.stringify(workspaceAppRouteAccess.publicPaths))},
+    VITE_AGENT_NATIVE_WORKSPACE_APP_PROTECTED_PATHS: ${JSON.stringify(JSON.stringify(workspaceAppRouteAccess.protectedPaths))},
+    VITE_AGENT_NATIVE_WORKSPACE_APPS_JSON: ${JSON.stringify(JSON.stringify(workspaceApps))},
     ${JSON.stringify(WORKSPACE_APPS_ENV_KEY)}: ${JSON.stringify(JSON.stringify(workspaceApps))},
   });
 }
@@ -590,6 +623,17 @@ function readWorkspaceAppManifest(workspaceRoot, apps) {
         const appPath = `/${app}`;
         const explicit = explicitApps.get(app);
         const url = normalizeWorkspaceAppUrl(explicit?.url) ?? workspaceAppUrl(appPath);
+        const audience = workspaceAppAudienceFromPackageJson(pkg) ??
+            explicit?.audience ??
+            DEFAULT_WORKSPACE_APP_AUDIENCE;
+        const packageRouteAccess = workspaceAppRouteAccessFromPackageJson(pkg);
+        // Prefer the package.json value whenever the field was set — including
+        // an explicit empty array, which is how a per-app package.json signals
+        // "clear any previously-published manifest override." Falling back on
+        // length > 0 would silently keep the explicit override even after the
+        // app owner blanked their list.
+        const publicPaths = packageRouteAccess.publicPaths ?? explicit?.publicPaths ?? [];
+        const protectedPaths = packageRouteAccess.protectedPaths ?? explicit?.protectedPaths ?? [];
         return {
             id: app,
             name: pkg?.displayName || titleCase(app),
@@ -597,6 +641,9 @@ function readWorkspaceAppManifest(workspaceRoot, apps) {
             path: appPath,
             ...(url ? { url } : {}),
             isDispatch: app === "dispatch",
+            audience,
+            publicPaths,
+            protectedPaths,
         };
     })
         .sort((a, b) => {
@@ -645,20 +692,36 @@ function parseWorkspaceAppsManifest(parsed) {
         if (!id)
             return null;
         const url = normalizeWorkspaceAppUrl(entry.url);
+        const audience = entry.audience === undefined
+            ? undefined
+            : normalizeWorkspaceAppAudience(entry.audience);
+        const publicPaths = normalizeWorkspaceAppPathList(entry.publicPaths);
+        const protectedPaths = normalizeWorkspaceAppPathList(entry.protectedPaths);
         return {
             id,
             ...(url ? { url } : {}),
+            ...(audience ? { audience } : {}),
+            ...(publicPaths.length > 0 ? { publicPaths } : {}),
+            ...(protectedPaths.length > 0 ? { protectedPaths } : {}),
         };
     })
         .filter((app) => !!app);
     return apps.length ? apps : null;
 }
 function workspaceBaseUrl() {
-    return (process.env.WORKSPACE_GATEWAY_URL ||
-        process.env.APP_URL ||
+    const gatewayOrigin = process.env.WORKSPACE_GATEWAY_URL || process.env.VITE_WORKSPACE_GATEWAY_URL;
+    const publicGatewayOrigin = normalizeOrigin(gatewayOrigin);
+    const gatewayFallback = publicGatewayOrigin && !isLoopbackOrigin(publicGatewayOrigin)
+        ? gatewayOrigin
+        : null;
+    return (process.env.APP_URL ||
+        process.env.WORKSPACE_OAUTH_ORIGIN ||
+        process.env.VITE_WORKSPACE_OAUTH_ORIGIN ||
         process.env.URL ||
         process.env.DEPLOY_URL ||
         process.env.BETTER_AUTH_URL ||
+        gatewayFallback ||
+        gatewayOrigin ||
         null);
 }
 function normalizeOrigin(value) {
@@ -671,14 +734,34 @@ function normalizeOrigin(value) {
         return undefined;
     }
 }
+function isLoopbackOrigin(origin) {
+    if (!origin)
+        return false;
+    try {
+        const host = new URL(origin).hostname.toLowerCase();
+        return (host === "localhost" ||
+            host === "127.0.0.1" ||
+            host === "[::1]" ||
+            host === "::1");
+    }
+    catch {
+        return false;
+    }
+}
 function workspaceOAuthOrigin(workspaceGatewayUrl) {
+    // Explicit overrides (env vars set by the operator) win even if they happen
+    // to be loopback — that's a deliberate dev-against-prod choice.
+    // The gateway-URL fallback, however, is auto-resolved and would silently
+    // send users to localhost if the configured gateway is loopback in a
+    // production deploy. Strip loopback there so OAuth fails loudly instead.
+    const gatewayFallback = normalizeOrigin(workspaceGatewayUrl);
     return (normalizeOrigin(process.env.VITE_WORKSPACE_OAUTH_ORIGIN) ||
         normalizeOrigin(process.env.WORKSPACE_OAUTH_ORIGIN) ||
         normalizeOrigin(process.env.APP_URL) ||
         normalizeOrigin(process.env.BETTER_AUTH_URL) ||
         normalizeOrigin(process.env.URL) ||
         normalizeOrigin(process.env.DEPLOY_URL) ||
-        normalizeOrigin(workspaceGatewayUrl));
+        (isLoopbackOrigin(gatewayFallback) ? undefined : gatewayFallback));
 }
 function workspaceAppUrl(appPath) {
     const base = workspaceBaseUrl();
@@ -779,6 +862,17 @@ function normalizePreset(value) {
 }
 function moduleIdent(app) {
     return "app_" + app.replace(/[^a-zA-Z0-9_]/g, "_");
+}
+function workspaceAppAudienceForApp(workspaceApps, app) {
+    return (workspaceApps.find((entry) => entry.id === app)?.audience ??
+        DEFAULT_WORKSPACE_APP_AUDIENCE);
+}
+function workspaceAppRouteAccessForApp(workspaceApps, app) {
+    const entry = workspaceApps.find((candidate) => candidate.id === app);
+    return {
+        publicPaths: entry?.publicPaths ?? [],
+        protectedPaths: entry?.protectedPaths ?? [],
+    };
 }
 function compareWorkspaceAppIds(a, b) {
     if (a === "dispatch")

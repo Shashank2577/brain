@@ -19,6 +19,8 @@ import {
   IconPin,
   IconDownload,
   IconCode,
+  IconArchive,
+  IconPhoto,
   IconRefresh,
 } from "@tabler/icons-react";
 import {
@@ -76,6 +78,10 @@ import {
   readPendingGeneration,
 } from "@/lib/pending-generation";
 import type { TweakDefinition } from "@shared/api";
+import {
+  resolveTweaksToCssVars,
+  type TweakSelections,
+} from "@shared/resolve-tweaks";
 import {
   Tooltip,
   TooltipContent,
@@ -342,13 +348,16 @@ export default function DesignEditor() {
     }
   }, [id, markGenerationStale, trackAgentGeneration]);
 
+  const pendingGenerationActive =
+    hasPendingGeneration && !!readPendingGeneration(id);
+
   const { data: designResult, isLoading: designLoading } = useActionQuery<
     DesignData | string
   >(
     "get-design",
     { id: id! },
     {
-      refetchInterval: hasPendingGeneration || generating ? 1000 : false,
+      refetchInterval: pendingGenerationActive || generating ? 1000 : false,
     },
   );
 
@@ -381,9 +390,12 @@ export default function DesignEditor() {
 
   const updateFileMutation = useActionMutation("update-file");
   const updateDesignMutation = useActionMutation("update-design");
+  const applyTweaksMutation = useActionMutation("apply-tweaks");
   const createCodingHandoffMutation = useActionMutation(
     "export-coding-handoff",
   );
+  const exportHtmlMutation = useActionMutation("export-html");
+  const exportZipMutation = useActionMutation("export-zip");
   const pendingFileSaveRef = useRef<{ id: string; content: string } | null>(
     null,
   );
@@ -413,6 +425,41 @@ export default function DesignEditor() {
     return () => {
       if (fileSaveTimerRef.current) {
         window.clearTimeout(fileSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Debounced persistence of the user's live tweak knob values into
+  // designs.data.tweakSelections (additive JSON merge, server-side). This is
+  // what makes the visual-tune survive reload and feeds the snapshot/handoff
+  // round-trip so external agents continue from the *tuned* design.
+  const pendingTweakSaveRef = useRef<TweakSelections | null>(null);
+  const tweakSaveTimerRef = useRef<number | null>(null);
+  const queueTweakSave = useCallback(
+    (selections: TweakSelections) => {
+      if (!id) return;
+      pendingTweakSaveRef.current = selections;
+      if (tweakSaveTimerRef.current) {
+        window.clearTimeout(tweakSaveTimerRef.current);
+      }
+      tweakSaveTimerRef.current = window.setTimeout(() => {
+        const pending = pendingTweakSaveRef.current;
+        pendingTweakSaveRef.current = null;
+        tweakSaveTimerRef.current = null;
+        if (!pending) return;
+        applyTweaksMutation.mutate({
+          designId: id,
+          selections: pending,
+        } as any);
+      }, 600);
+    },
+    [id, applyTweaksMutation],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (tweakSaveTimerRef.current) {
+        window.clearTimeout(tweakSaveTimerRef.current);
       }
     };
   }, []);
@@ -492,8 +539,14 @@ export default function DesignEditor() {
     const uploadedFiles = Array.isArray(pending.files) ? pending.files : [];
     const fileContext = formatUploadedFileContext(uploadedFiles);
     const sourceContext = pending.source
-      ? `The user picked the "${pending.source}" example template.`
+      ? `The user picked the "${pending.source}" template.`
       : "The user just created a new empty design.";
+
+    if (pending.autoGenerate === false) {
+      setGenerationIssue(null);
+      setHasPendingGeneration(true);
+      return;
+    }
 
     const context = [
       sourceContext,
@@ -618,7 +671,23 @@ export default function DesignEditor() {
     }
   }, [design?.data]);
 
-  // Initialize tweak selections from defaults the first time we see a tweak set.
+  // Persisted user knob values live in designs.data.tweakSelections (written by
+  // the apply-tweaks action). Restoring them on load is what makes the
+  // visual-tune round-trip survive a refresh and feed the snapshot/handoff.
+  const persistedSelections: TweakSelections = useMemo(() => {
+    if (!design?.data) return {};
+    try {
+      const parsed = JSON.parse(design.data);
+      const sel = parsed?.tweakSelections;
+      return sel && typeof sel === "object" && !Array.isArray(sel) ? sel : {};
+    } catch {
+      return {};
+    }
+  }, [design?.data]);
+
+  // Initialize tweak selections: persisted user value first, then the tweak's
+  // default. Runs once per design load (only fills keys still undefined locally
+  // so an in-progress drag isn't clobbered by a slightly-stale fetch).
   useEffect(() => {
     if (tweaks.length === 0) return;
     setTweakSelections((prev) => {
@@ -626,33 +695,22 @@ export default function DesignEditor() {
       let changed = false;
       for (const t of tweaks) {
         if (next[t.id] === undefined) {
-          next[t.id] = t.defaultValue;
+          const persisted = persistedSelections[t.id];
+          next[t.id] = persisted !== undefined ? persisted : t.defaultValue;
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [tweaks]);
+  }, [tweaks, persistedSelections]);
 
   // Map tweak selections (id -> value) to CSS-var assignments (--var -> value)
-  // for the iframe bridge. Toggle booleans become "1"/"0"; numbers get the
-  // unit they're declared with (px for radius, otherwise unitless).
-  const cssVarValues = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const t of tweaks) {
-      if (!t.cssVar) continue;
-      const v = tweakSelections[t.id] ?? t.defaultValue;
-      if (typeof v === "boolean") {
-        out[t.cssVar] = v ? "1" : "0";
-      } else if (typeof v === "number") {
-        const unit = t.cssVar.toLowerCase().includes("radius") ? "px" : "";
-        out[t.cssVar] = `${v}${unit}`;
-      } else {
-        out[t.cssVar] = String(v);
-      }
-    }
-    return out;
-  }, [tweaks, tweakSelections]);
+  // for the iframe bridge. Shared with the snapshot/handoff actions via
+  // `@shared/resolve-tweaks` so the UI and external agents resolve identically.
+  const cssVarValues = useMemo(
+    () => resolveTweaksToCssVars(tweaks, tweakSelections),
+    [tweaks, tweakSelections],
+  );
 
   // Expose selection state for agent context
   useEffect(() => {
@@ -859,12 +917,142 @@ export default function DesignEditor() {
     );
   }, [createCodingHandoffMutation, id]);
 
+  const triggerBlobDownload = useCallback((blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }, []);
+
+  const fallbackExportName = useCallback(
+    (extension: string) => {
+      const safeTitle =
+        design?.title?.replace(/[^a-zA-Z0-9_-]/g, "-") || "design";
+      return `${safeTitle}.${extension}`;
+    },
+    [design?.title],
+  );
+
+  const handleDownloadHtml = useCallback(() => {
+    if (!id) return;
+    exportHtmlMutation.mutate({ id } as any, {
+      onSuccess: (result: any) => {
+        if (typeof result?.html !== "string") {
+          toast.error("Could not create HTML download");
+          return;
+        }
+        triggerBlobDownload(
+          new Blob([result.html], { type: "text/html;charset=utf-8" }),
+          result.filename || fallbackExportName("html"),
+        );
+        toast.success("HTML downloaded");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Could not export HTML");
+      },
+    });
+  }, [exportHtmlMutation, fallbackExportName, id, triggerBlobDownload]);
+
+  const handleDownloadZip = useCallback(() => {
+    if (!id) return;
+    exportZipMutation.mutate({ id } as any, {
+      onSuccess: (result: any) => {
+        if (typeof result?.zipBase64 !== "string") {
+          toast.error("Could not create ZIP download");
+          return;
+        }
+        const binary = window.atob(result.zipBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        triggerBlobDownload(
+          new Blob([bytes], { type: "application/zip" }),
+          result.filename || fallbackExportName("zip"),
+        );
+        toast.success("ZIP downloaded");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Could not export ZIP");
+      },
+    });
+  }, [exportZipMutation, fallbackExportName, id, triggerBlobDownload]);
+
+  const handleDownloadPng = useCallback(async () => {
+    const iframe = document.querySelector<HTMLIFrameElement>(
+      'iframe[title="Design Preview"]',
+    );
+    const doc = iframe?.contentDocument;
+    if (!doc?.documentElement) {
+      toast.error("Open a screen before exporting PNG");
+      return;
+    }
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const width = Math.max(
+        doc.documentElement.scrollWidth,
+        doc.body?.scrollWidth ?? 0,
+        iframe?.clientWidth ?? 0,
+      );
+      const height = Math.max(
+        doc.documentElement.scrollHeight,
+        doc.body?.scrollHeight ?? 0,
+        iframe?.clientHeight ?? 0,
+      );
+      const canvas = await html2canvas(doc.documentElement, {
+        width,
+        height,
+        windowWidth: width,
+        windowHeight: height,
+        scale: Math.min(2, window.devicePixelRatio || 1),
+        useCORS: true,
+        backgroundColor: null,
+      });
+      canvas.toBlob((blob) => {
+        try {
+          if (!blob) {
+            toast.error("Could not create PNG download");
+            return;
+          }
+          triggerBlobDownload(blob, fallbackExportName("png"));
+          toast.success("PNG downloaded");
+        } catch (callbackError) {
+          // `triggerBlobDownload` does DOM mutation + `URL.createObjectURL`,
+          // either of which can throw inside this async callback — outside
+          // the outer try/catch. Surface the failure instead of silently
+          // dropping it.
+          console.error("PNG export failed during download:", callbackError);
+          toast.error(
+            callbackError instanceof Error
+              ? callbackError.message
+              : "Could not save PNG",
+          );
+        }
+      }, "image/png");
+    } catch (error) {
+      console.error("PNG export failed:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Could not export PNG",
+      );
+    }
+  }, [fallbackExportName, triggerBlobDownload]);
+
+  const exportPending =
+    exportHtmlMutation.isPending ||
+    exportZipMutation.isPending ||
+    createCodingHandoffMutation.isPending;
+
   if (!id) {
     navigate("/");
     return null;
   }
 
-  if (designLoading || (!design && hasPendingGeneration)) {
+  if (designLoading || (!design && pendingGenerationActive)) {
     return (
       <div className="flex-1 bg-background flex items-center justify-center">
         <Spinner className="size-8 text-foreground/30" />
@@ -1157,9 +1345,7 @@ export default function DesignEditor() {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 cursor-pointer"
-                    disabled={
-                      !activeFile || createCodingHandoffMutation.isPending
-                    }
+                    disabled={!activeFile || exportPending}
                   >
                     <IconDownload className="w-3.5 h-3.5" />
                   </Button>
@@ -1168,6 +1354,27 @@ export default function DesignEditor() {
               <TooltipContent>Export</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem
+                onClick={handleDownloadHtml}
+                disabled={!activeFile || exportHtmlMutation.isPending}
+              >
+                <IconCode className="mr-2 h-4 w-4" />
+                Download HTML
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleDownloadPng}
+                disabled={!activeFile}
+              >
+                <IconPhoto className="mr-2 h-4 w-4" />
+                Download PNG
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleDownloadZip}
+                disabled={!activeFile || exportZipMutation.isPending}
+              >
+                <IconArchive className="mr-2 h-4 w-4" />
+                Download ZIP
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handleCopyCodingHandoff}
                 disabled={!activeFile || createCodingHandoffMutation.isPending}
@@ -1309,7 +1516,7 @@ export default function DesignEditor() {
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              {generating || hasPendingGeneration ? (
+              {generating || pendingGenerationActive ? (
                 <>
                   <Spinner className="mx-auto mb-3 size-6 text-foreground/30" />
                   <p className="text-sm text-muted-foreground">
@@ -1376,8 +1583,12 @@ export default function DesignEditor() {
             <TweaksPanel
               tweaks={tweaks}
               values={tweakSelections}
-              onChange={(id, value) =>
-                setTweakSelections((prev) => ({ ...prev, [id]: value }))
+              onChange={(tweakId, value) =>
+                setTweakSelections((prev) => {
+                  const next = { ...prev, [tweakId]: value };
+                  queueTweakSave(next);
+                  return next;
+                })
               }
               onClose={() => setTweaksVisible(false)}
               visible

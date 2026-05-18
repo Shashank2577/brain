@@ -1143,7 +1143,7 @@ export declare const bookingShares: import("drizzle-orm/sqlite-core").SQLiteTabl
             tableName: string;
             dataType: "string";
             columnType: "SQLiteText";
-            data: "viewer" | "editor" | "admin";
+            data: "admin" | "viewer" | "editor";
             driverParam: string;
             notNull: true;
             hasDefault: true;

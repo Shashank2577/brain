@@ -4,6 +4,7 @@ import { defineAction } from "../../action.js";
 import { getRequestOrgId } from "../../server/request-context.js";
 import { assertAccess, ForbiddenError } from "../access.js";
 import { requireShareableResource } from "../registry.js";
+import { getExtensionShareChangeTargets, notifyExtensionShareChanged, } from "./extension-change.js";
 export default defineAction({
     description: "Change the coarse visibility of a shareable resource: 'private' | 'org' | 'public'. Owner or admin role required.",
     // (audit H5) Visibility changes are admin-tier and can flip a private
@@ -20,6 +21,7 @@ export default defineAction({
             throw new ForbiddenError(`${reg.displayName} cannot be made public — share with specific people or your organization instead.`);
         }
         const access = await assertAccess(args.resourceType, args.resourceId, "admin");
+        const beforeExtensionTargets = await getExtensionShareChangeTargets(args.resourceType, args.resourceId);
         const db = reg.getDb();
         const update = { visibility: args.visibility };
         const currentOrgId = getRequestOrgId();
@@ -30,6 +32,7 @@ export default defineAction({
             .update(reg.resourceTable)
             .set(update)
             .where(eq(reg.resourceTable.id, args.resourceId));
+        await notifyExtensionShareChanged(args.resourceType, args.resourceId, beforeExtensionTargets);
         return { ok: true, visibility: args.visibility };
     },
 });

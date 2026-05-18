@@ -772,7 +772,7 @@ export declare const scheduleShares: import("drizzle-orm/sqlite-core").SQLiteTab
             tableName: string;
             dataType: "string";
             columnType: "SQLiteText";
-            data: "viewer" | "editor" | "admin";
+            data: "admin" | "viewer" | "editor";
             driverParam: string;
             notNull: true;
             hasDefault: true;

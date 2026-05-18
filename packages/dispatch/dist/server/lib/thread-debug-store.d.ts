@@ -32,7 +32,7 @@ export declare function searchAgentThreads(input: {
     source: {
         id: string;
         label: string;
-        kind: "env" | "current" | "configured";
+        kind: "current" | "env" | "configured";
         databaseUrlEnv: string;
     };
     access: {
@@ -64,7 +64,7 @@ export declare function getAgentThreadDebug(input: {
     source: {
         id: string;
         label: string;
-        kind: "env" | "current" | "configured";
+        kind: "current" | "env" | "configured";
         databaseUrlEnv: string;
     };
     access: {

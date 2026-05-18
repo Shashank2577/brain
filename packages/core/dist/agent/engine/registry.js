@@ -8,6 +8,7 @@
  * Built-in engines (anthropic, ai-sdk) are auto-registered by builtin.ts.
  */
 import { getSetting } from "../../settings/store.js";
+import { getAgentAppModelDefaultForCurrentRequest } from "../app-model-defaults.js";
 import { canUseDeployCredentialFallbackForRequest, readDeployCredentialEnv, resolveSecret, } from "../../server/credential-provider.js";
 const _registry = new Map();
 /**
@@ -210,19 +211,20 @@ export async function isStoredEngineUsableForRequest(stored, entry) {
     return true;
 }
 /**
- * Resolve an AgentEngine from options → explicit env → request credentials →
- * settings → env → default.
+ * Resolve an AgentEngine from options → explicit env → app default →
+ * request credentials → settings → env → default.
  *
  * Resolution order:
  * 1. Explicit `engineOption` from plugin options (string name, instance, or {name, config})
  * 2. Env var AGENT_ENGINE
- * 3. Current request's app_secrets; Builder wins by default when connected
- * 4. Settings store key "agent-engine" → { engine: string }, when usable
- * 5. Auto-detect deployment env credentials
- * 6. Default "anthropic" (requires ANTHROPIC_API_KEY)
+ * 3. Org/user app-template default, when usable
+ * 4. Current request's app_secrets; Builder wins by default when connected
+ * 5. Settings store key "agent-engine" → { engine: string }, when usable
+ * 6. Auto-detect deployment env credentials
+ * 7. Default "anthropic" (requires ANTHROPIC_API_KEY)
  */
 export async function resolveEngine(config) {
-    const { engineOption, apiKey, model: _model } = config;
+    const { engineOption, apiKey, model: _model, appId } = config;
     // 1. Explicit instance passed directly
     if (engineOption &&
         typeof engineOption === "object" &&
@@ -252,6 +254,13 @@ export async function resolveEngine(config) {
         const entry = _registry.get(envEngine);
         if (entry)
             return entry.create(engineCreateConfig(apiKey));
+    }
+    const appDefault = await getAgentAppModelDefaultForCurrentRequest(appId);
+    if (appDefault?.engine) {
+        const entry = _registry.get(appDefault.engine);
+        if (entry && (await isStoredEngineUsableForRequest(appDefault, entry))) {
+            return entry.create(engineCreateConfig(apiKey));
+        }
     }
     let stored = null;
     try {
@@ -301,8 +310,19 @@ export async function resolveEngine(config) {
  * — otherwise returns `undefined` to avoid applying an Anthropic model string
  * to, say, an OpenRouter engine.
  */
-export async function getStoredModelForEngine(engine) {
+export async function getStoredModelForEngine(engine, options = {}) {
     const engineName = typeof engine === "string" ? engine : engine.name;
+    try {
+        const appDefault = await getAgentAppModelDefaultForCurrentRequest(options.appId);
+        if (appDefault?.engine === engineName &&
+            typeof appDefault.model === "string" &&
+            appDefault.model.length > 0) {
+            return appDefault.model;
+        }
+    }
+    catch {
+        // Settings/request context may not be available — fall through.
+    }
     try {
         const stored = await getSetting("agent-engine");
         if (stored &&

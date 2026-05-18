@@ -10,4 +10,5 @@ import type { A2AConfig } from "./types.js";
  * cryptographic identity verification for cross-app A2A calls.
  */
 export declare function mountA2A(nitroApp: any, config: A2AConfig, routePrefix?: string): void;
+export declare function filterPublicAgentCardSkills(config: A2AConfig): import("./types.js").AgentSkill[];
 //# sourceMappingURL=server.d.ts.map

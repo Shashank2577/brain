@@ -4,7 +4,7 @@ import { NavLink, useLocation } from "react-router";
 import { AgentSidebar, FeedbackButton, appBasePath, appPath, useActionQuery, } from "@agent-native/core/client";
 import { ExtensionsSidebarSection } from "@agent-native/core/client/extensions";
 import { InvitationBanner, OrgSwitcher } from "@agent-native/core/client/org";
-import { IconArrowUpRight, IconApps, IconChartBar, IconBrandTelegram, IconKey, IconChevronDown, IconLayersSubtract, IconMessages, IconPlugConnected, IconBroadcast, IconFingerprint, IconHistory, IconPuzzle, IconShieldCheck, IconUsersGroup, } from "@tabler/icons-react";
+import { IconArrowUpRight, IconApps, IconBrain, IconChartBar, IconBrandTelegram, IconKey, IconChevronDown, IconLayersSubtract, IconMessages, IconPlugConnected, IconBroadcast, IconFingerprint, IconHistory, IconPuzzle, IconShieldCheck, IconUsersGroup, } from "@tabler/icons-react";
 import { cn } from "../../lib/utils.js";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, } from "../../components/ui/sheet.js";
 import { Header } from "./Header.js";
@@ -94,6 +94,13 @@ const OPERATIONS_NAV_ITEMS = [
         to: "/audit",
         label: "Audit",
         icon: IconHistory,
+        section: "operations",
+    },
+    {
+        id: "dreams",
+        to: "/dreams",
+        label: "Dreams",
+        icon: IconBrain,
         section: "operations",
     },
     {
@@ -210,6 +217,6 @@ export function Layout({ children, extensions, }) {
     }
     const showHeader = !pageOwnsToolbar(location.pathname);
     const appContent = (_jsxs("div", { className: "flex h-full flex-1 flex-col overflow-hidden", children: [showHeader ? _jsx(Header, { onOpenMobile: () => setMobileOpen(true) }) : null, _jsx(InvitationBanner, {}), _jsx("main", { className: "flex-1 overflow-y-auto", children: showHeader ? (_jsx("div", { className: "mx-auto max-w-7xl space-y-10 px-4 py-6 sm:px-6", children: children })) : (children) })] }));
-    return (_jsx(HeaderActionsProvider, { children: _jsxs("div", { className: "flex h-screen w-full overflow-hidden bg-background", children: [_jsx("aside", { className: "hidden lg:flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground", children: _jsx(NavContent, { extensions: extensions }) }), _jsx(Sheet, { open: mobileOpen, onOpenChange: setMobileOpen, children: _jsxs(SheetContent, { side: "left", className: "w-72 p-0 bg-sidebar text-sidebar-foreground [&>button]:hidden", children: [_jsx(SheetTitle, { className: "sr-only", children: "Navigation" }), _jsx(SheetDescription, { className: "sr-only", children: "Workspace navigation links" }), _jsx("div", { className: "flex h-full w-full flex-col", children: _jsx(NavContent, { extensions: extensions, onNavigate: () => setMobileOpen(false) }) })] }) }), _jsx(AgentSidebar, { position: "right", defaultOpen: false, emptyStateText: "Create apps, grant keys, and route work across the workspace.", suggestions: SIDEBAR_SUGGESTIONS, children: appContent })] }) }));
+    return (_jsx(HeaderActionsProvider, { children: _jsxs("div", { className: "flex h-screen w-full overflow-hidden bg-background", children: [_jsx("aside", { className: "hidden lg:flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground", children: _jsx(NavContent, { extensions: extensions }) }), _jsx(Sheet, { open: mobileOpen, onOpenChange: setMobileOpen, children: _jsxs(SheetContent, { side: "left", className: "w-72 p-0 bg-sidebar text-sidebar-foreground [&>button]:hidden", children: [_jsx(SheetTitle, { className: "sr-only", children: "Navigation" }), _jsx(SheetDescription, { className: "sr-only", children: "Workspace navigation links" }), _jsx("div", { className: "flex h-full w-full flex-col", children: _jsx(NavContent, { extensions: extensions, onNavigate: () => setMobileOpen(false) }) })] }) }), _jsx(AgentSidebar, { position: "right", defaultOpen: false, emptyStateText: "Create apps, manage vault keys, and route work across the workspace.", suggestions: SIDEBAR_SUGGESTIONS, children: appContent })] }) }));
 }
 //# sourceMappingURL=Layout.js.map

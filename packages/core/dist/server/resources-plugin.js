@@ -1,6 +1,6 @@
 import { getH3App, markDefaultPluginProvided, } from "./framework-request-handler.js";
 import { defineEventHandler, setResponseStatus, getMethod } from "h3";
-import { handleListResources, handleGetResourceTree, handleGetResource, handleCreateResource, handleUpdateResource, handleDeleteResource, handleUploadResource, } from "../resources/handlers.js";
+import { handleListResources, handleGetResourceTree, handleGetEffectiveResourceContext, handleGetResource, handleCreateResource, handleUpdateResource, handleDeleteResource, handleUploadResource, } from "../resources/handlers.js";
 /**
  * Creates a Nitro plugin that mounts all resource CRUD routes.
  *
@@ -17,6 +17,13 @@ export function createResourcesPlugin() {
     return async (nitroApp) => {
         markDefaultPluginProvided(nitroApp, "resources");
         // Mount specific sub-routes BEFORE the catch-all
+        getH3App(nitroApp).use("/_agent-native/resources/effective", defineEventHandler(async (event) => {
+            if (getMethod(event) !== "GET") {
+                setResponseStatus(event, 405);
+                return { error: "Method not allowed" };
+            }
+            return handleGetEffectiveResourceContext(event);
+        }));
         getH3App(nitroApp).use("/_agent-native/resources/tree", defineEventHandler(async (event) => {
             if (getMethod(event) !== "GET") {
                 setResponseStatus(event, 405);
@@ -47,7 +54,9 @@ export function createResourcesPlugin() {
                 return { error: "Method not allowed" };
             }
             // Already handled by dedicated routes above
-            if (subPath === "tree" || subPath === "upload")
+            if (subPath === "effective" ||
+                subPath === "tree" ||
+                subPath === "upload")
                 return;
             // /_agent-native/resources/:id — get, update, delete
             event.context.params = { ...event.context.params, id: subPath };

@@ -1,3 +1,4 @@
+import type { AgentPromptAttachment } from "../code-agents/prompt-attachments.js";
 export type CodeAgentRunStatus = "queued" | "running" | "paused" | "needs-approval" | "completed" | "errored" | "unknown";
 export declare const CODE_AGENT_PERMISSION_MODES: readonly ["read-only", "ask-before-edit", "auto-edit", "full-auto"];
 export type CodeAgentPermissionMode = (typeof CODE_AGENT_PERMISSION_MODES)[number];
@@ -21,6 +22,7 @@ export interface CodeAgentPendingFollowUp {
     eventId?: string;
     permissionMode?: CodeAgentPermissionMode;
     source?: string;
+    attachments?: AgentPromptAttachment[];
 }
 export interface CodeAgentRunRecord {
     schemaVersion: 1;
@@ -81,6 +83,7 @@ export interface QueueCodeAgentFollowUpInput {
     permissionMode?: CodeAgentPermissionMode;
     source?: string;
     createdAt?: string;
+    attachments?: AgentPromptAttachment[];
 }
 export declare function codeAgentStoreRoot(): string;
 export declare function codeAgentRunsDir(): string;

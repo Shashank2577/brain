@@ -5,6 +5,8 @@ export { ExtensionsListPage } from "./ExtensionsListPage.js";
 export { ExtensionViewerPage } from "./ExtensionViewerPage.js";
 export { EmbeddedExtension, } from "./EmbeddedExtension.js";
 export { ExtensionSlot } from "./ExtensionSlot.js";
+export { AgentNativeExtensionFrame, AgentNativeExtensionSlot, } from "./AgentNativeExtensionFrame.js";
+export { AGENT_NATIVE_EXTENSION_MESSAGE_TYPES, buildAgentNativeExtensionHtml, createHttpAgentNativeExtensionStorage, createLocalStorageAgentNativeExtensionStorage, getAgentNativeExtensionManifest, isAgentNativeExtensionAllowedInSlot, normalizeAgentNativeExtensionSandbox, } from "./portable-extension.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // Legacy aliases — these names predate the Tools → Extensions rename. Keep
 // exporting them so deployed templates that haven't been updated still

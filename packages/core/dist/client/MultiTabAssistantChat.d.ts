@@ -37,6 +37,8 @@ export type MultiTabAssistantChatProps = Omit<AssistantChatProps, "tabId" | "thr
     contentHidden?: boolean;
     /** Namespace for localStorage keys — used to isolate chat state per app in the frame. */
     storageKey?: string;
+    /** Stable browser tab id used for tab-scoped app-state context. */
+    browserTabId?: string;
     /**
      * Bind new chats to a resource (deck, design, dashboard, etc.). When set,
      * the tab bar, history popover, and active-thread persistence all
@@ -47,6 +49,6 @@ export type MultiTabAssistantChatProps = Omit<AssistantChatProps, "tabId" | "thr
      */
     scope?: ChatThreadScope | null;
 };
-export declare function MultiTabAssistantChat({ showTabBar, renderHeader, renderOverlay, contentHidden, apiUrl, storageKey, scope, ...props }: MultiTabAssistantChatProps): import("react/jsx-runtime").JSX.Element;
+export declare function MultiTabAssistantChat({ showTabBar, renderHeader, renderOverlay, contentHidden, apiUrl, storageKey, browserTabId, scope, ...props }: MultiTabAssistantChatProps): import("react/jsx-runtime").JSX.Element;
 export {};
 //# sourceMappingURL=MultiTabAssistantChat.d.ts.map

@@ -98,6 +98,29 @@ export declare function resolveBuilderCredentials(): Promise<{
     orgName: string | null;
     orgKind: string | null;
 }>;
+export interface BuilderCredentialAuthFailure {
+    fingerprint: string;
+    message: string;
+    status?: number;
+    code?: string;
+    at: number;
+    ownerEmail?: string | null;
+    orgId?: string | null;
+}
+export declare function builderCredentialFingerprint(privateKey?: string | null, publicKey?: string | null): string | null;
+export declare function getBuilderCredentialAuthFailure(creds?: {
+    privateKey?: string | null;
+    publicKey?: string | null;
+}): Promise<BuilderCredentialAuthFailure | null>;
+export declare function recordBuilderCredentialAuthFailure(details?: {
+    status?: number;
+    code?: string;
+    message?: string;
+}): Promise<void>;
+export declare function clearBuilderCredentialAuthFailure(creds: {
+    privateKey?: string | null;
+    publicKey?: string | null;
+}): Promise<void>;
 /**
  * Write Builder credentials to `app_secrets`.
  *
@@ -173,10 +196,8 @@ export declare function hasBuilderPrivateKey(): boolean;
 /** The origin for Builder-proxied API calls. Overridable for testing. */
 export declare function getBuilderProxyOrigin(): string;
 /**
- * Base URL for the public Builder LLM gateway (distinct from the internal
- * proxy origin above — the public gateway lives at
- * api.builder.io/agent-native/gateway, while the internal origin is
- * ai-services.builder.io).
+ * Base URL for the public Builder LLM gateway, which lives at
+ * api.builder.io/agent-native/gateway.
  * Override via BUILDER_GATEWAY_BASE_URL for staging / testing.
  */
 export declare function getBuilderGatewayBaseUrl(): string;

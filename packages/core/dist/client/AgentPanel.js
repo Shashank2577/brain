@@ -18,8 +18,8 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  *   // In a popover
  *   <Popover><AgentPanel suggestions={[...]} /></Popover>
  *
- *   // Full page
- *   <AgentPanel className="h-screen" />
+ *   // Full page chat surface
+ *   <AgentChatSurface mode="page" className="h-screen" />
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense, startTransition, } from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
@@ -28,14 +28,18 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortc
 import { IconMessageCircle, IconMessageDots, IconTerminal2, IconSettings, IconLayoutSidebarRightCollapse, IconLayoutGrid, IconCheck, IconPlus, IconX, IconDotsVertical, IconHistory, IconArrowsMaximize, IconArrowsMinimize, IconExternalLink, } from "@tabler/icons-react";
 import { FeedbackButton } from "./FeedbackButton.js";
 import { MultiTabAssistantChat, } from "./MultiTabAssistantChat.js";
+import { isAssistantUiStaleIndexError, } from "./AssistantChat.js";
 import { useDevMode } from "./use-dev-mode.js";
 import { useScreenRefreshKey } from "./use-db-sync.js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 import { cn } from "./utils.js";
 import { agentNativePath } from "./api-path.js";
+import { trackEvent } from "./analytics.js";
+import { withBuilderConnectTrackingParams } from "./settings/useBuilderStatus.js";
 import { getFrameOrigin, isInFrame, isTrustedFrameMessage } from "./frame.js";
-import { getInitialAgentSidebarOpen, SIDEBAR_OPEN_KEY, } from "./agent-sidebar-state.js";
+import { shouldParentFrameOwnAgentPanel } from "./builder-frame.js";
+import { consumeAgentSidebarUrlOpenOverride, dispatchAgentSidebarStateChange, getInitialAgentSidebarOpen, SIDEBAR_OPEN_KEY, } from "./agent-sidebar-state.js";
 // Lazy-load AgentTerminal to avoid bundling xterm.js when not needed
 const AgentTerminal = lazy(() => import("./terminal/index.js").then((m) => ({ default: m.AgentTerminal })));
 function parentFrameTargetOrigin() {
@@ -142,8 +146,9 @@ function useBuilderConnectUrl() {
                 .then((data) => {
                 if (cancelled || !data)
                     return;
-                if (data.connectUrl)
-                    setConnectUrl(data.connectUrl);
+                if (data.cliAuthUrl || data.connectUrl) {
+                    setConnectUrl(data.cliAuthUrl || data.connectUrl);
+                }
                 const nextConfigured = !!data.configured;
                 setConfigured(nextConfigured);
                 if (nextConfigured && !lastConfigured) {
@@ -222,10 +227,24 @@ function useClientOnly() {
 }
 function CodeAccessUnavailablePanel({ title, description, ctaLabel, ctaHref, secondaryCtaLabel = "Use Builder", secondaryCtaHref, compact = false, }) {
     const { connectUrl: builderConnectUrl } = useBuilderConnectUrl();
-    const builderHref = secondaryCtaHref ?? builderConnectUrl ?? "https://builder.io";
-    return (_jsxs("div", { className: cn("rounded-lg border border-border bg-muted/35 text-center", compact ? "mx-3 mt-2 px-3 py-2.5" : "max-w-[300px] px-4 py-4"), children: [_jsx("div", { className: cn("mx-auto flex items-center justify-center rounded-full bg-background text-muted-foreground", compact ? "mb-2 h-8 w-8" : "mb-3 h-10 w-10"), children: _jsx(IconTerminal2, { className: compact ? "h-4 w-4" : "h-5 w-5" }) }), _jsx("p", { className: "text-sm font-medium text-foreground", children: title }), _jsx("p", { className: cn("mt-1 text-muted-foreground", compact ? "text-[11px] leading-snug" : "text-xs leading-relaxed"), children: description }), _jsxs("div", { className: "mt-3 flex flex-wrap items-center justify-center gap-2", children: [ctaHref ? (_jsxs("a", { href: ctaHref, target: "_blank", rel: "noreferrer", className: "inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background hover:opacity-90", children: [ctaLabel, _jsx(IconExternalLink, { className: "h-3 w-3" })] })) : null, _jsxs("a", { href: builderHref, target: "_blank", rel: "noreferrer", className: "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent", children: [secondaryCtaLabel, _jsx(IconExternalLink, { className: "h-3 w-3" })] })] })] }));
+    const builderHref = secondaryCtaHref ??
+        (builderConnectUrl
+            ? withBuilderConnectTrackingParams(builderConnectUrl, {
+                source: "code_access_unavailable_panel",
+                flow: "background_agent",
+            })
+            : "https://builder.io");
+    return (_jsxs("div", { className: cn("rounded-lg border border-border bg-muted/35 text-center", compact ? "mx-3 mt-2 px-3 py-2.5" : "max-w-[300px] px-4 py-4"), children: [_jsx("div", { className: cn("mx-auto flex items-center justify-center rounded-full bg-background text-muted-foreground", compact ? "mb-2 h-8 w-8" : "mb-3 h-10 w-10"), children: _jsx(IconTerminal2, { className: compact ? "h-4 w-4" : "h-5 w-5" }) }), _jsx("p", { className: "text-sm font-medium text-foreground", children: title }), _jsx("p", { className: cn("mt-1 text-muted-foreground", compact ? "text-[11px] leading-snug" : "text-xs leading-relaxed"), children: description }), _jsxs("div", { className: "mt-3 flex flex-wrap items-center justify-center gap-2", children: [ctaHref ? (_jsxs("a", { href: ctaHref, target: "_blank", rel: "noreferrer", className: "inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background hover:opacity-90", children: [ctaLabel, _jsx(IconExternalLink, { className: "h-3 w-3" })] })) : null, _jsxs("a", { href: builderHref, target: "_blank", rel: "noreferrer", onClick: () => {
+                            trackEvent("builder connect clicked", {
+                                feature: "builder",
+                                stage: "client",
+                                source: "code_access_unavailable_panel",
+                                flow: "background_agent",
+                                connect_url_kind: builderConnectUrl ? "provided" : "fallback",
+                            });
+                        }, className: "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent", children: [secondaryCtaLabel, _jsx(IconExternalLink, { className: "h-3 w-3" })] })] })] }));
 }
-function AgentPanelInner({ defaultMode = "chat", className, apiUrl, emptyStateText, suggestions, showHeader = true, onCollapse, isFullscreen, onToggleFullscreen, devAppUrl, storageKey, scope, chatNotice, codeAccess, }) {
+function AgentPanelInner({ defaultMode = "chat", className, apiUrl, emptyStateText, emptyStateAddon, suggestions, dynamicSuggestions, showHeader = true, onCollapse, isFullscreen, onToggleFullscreen, devAppUrl, storageKey, scope, browserTabId, chatNotice, codeAccess, ...assistantChatProps }) {
     const mounted = useClientOnly();
     const keyPrefix = storageKey ? `:${storageKey}` : "";
     const execModeKey = `${EXEC_MODE_KEY}${keyPrefix}`;
@@ -417,15 +436,13 @@ function AgentPanelInner({ defaultMode = "chat", className, apiUrl, emptyStateTe
                                     ? "bg-accent text-foreground"
                                     : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"), style: AGENT_PANEL_CONTROL_STYLE, children: [_jsx(IconMessageCircle, { size: 14 }), "Chat"] }) }), _jsx(TooltipContent, { children: "Chat mode" })] }), showCliMode && (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsxs("button", { onClick: () => switchMode("cli"), "aria-label": "CLI terminal mode", className: cn("flex items-center gap-1 rounded-md px-2 py-1 text-[12px] leading-none", activeMode === "cli"
                                     ? "bg-accent text-foreground"
-                                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"), style: AGENT_PANEL_CONTROL_STYLE, children: [_jsx(IconTerminal2, { size: 14 }), "CLI"] }) }), _jsx(TooltipContent, { children: codeAccessEnabled
+                                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"), style: AGENT_PANEL_CONTROL_STYLE, children: [_jsx(IconTerminal2, { size: 14 }), "CLI"] }) }), _jsx(TooltipContent, { className: "max-w-[260px]", children: codeAccessEnabled
                                 ? "CLI terminal mode"
-                                : "Open Desktop to use CLI" })] })), _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsxs("button", { onClick: () => switchMode("resources"), "aria-label": "Workspace files, agents, skills, and tasks", className: cn("flex items-center gap-1 rounded-md px-2 py-1 text-[12px] leading-none", activeMode === "resources"
+                                : codeUnavailableDescription })] })), _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsxs("button", { onClick: () => switchMode("resources"), "aria-label": "Workspace files, agents, skills, and tasks", className: cn("flex items-center gap-1 rounded-md px-2 py-1 text-[12px] leading-none", activeMode === "resources"
                                     ? "bg-accent text-foreground"
-                                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"), style: AGENT_PANEL_CONTROL_STYLE, children: [_jsx(IconLayoutGrid, { size: 14 }), "Workspace"] }) }), _jsx(TooltipContent, { children: codeAccessEnabled
-                                ? "Workspace files, agents, skills, and tasks"
-                                : "Open Desktop to use Workspace" })] }), _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => switchMode("settings"), "aria-label": "Setup and configuration", className: cn("flex items-center justify-center rounded-md px-1.5 py-1", activeMode === "settings"
+                                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"), style: AGENT_PANEL_CONTROL_STYLE, children: [_jsx(IconLayoutGrid, { size: 14 }), "Workspace"] }) }), _jsx(TooltipContent, { children: "Workspace files, agents, skills, and tasks" })] }), _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => switchMode("settings"), "aria-label": "Setup and configuration", className: cn("flex items-center justify-center rounded-md px-1.5 py-1", activeMode === "settings"
                                     ? "bg-accent text-foreground"
-                                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"), children: _jsx(IconSettings, { size: 14 }) }) }), _jsx(TooltipContent, { children: "Setup and configuration" })] })] }) })), [codeAccessEnabled, showCliMode]);
+                                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"), children: _jsx(IconSettings, { size: 14 }) }) }), _jsx(TooltipContent, { children: "Setup and configuration" })] })] }) })), [codeAccessEnabled, codeUnavailableDescription, showCliMode]);
     const renderHeaderActions = useCallback(() => (_jsxs("div", { className: "flex shrink-0 items-center gap-1.5", children: [SHOW_ONBOARDING && canUseCodeTools && (_jsx(Suspense, { fallback: null, children: _jsx(SetupButton, {}) })), _jsx(FeedbackButton, { variant: "icon", side: "bottom", align: "end" }), onToggleFullscreen && (_jsx(IconTooltip, { content: isFullscreen ? "Exit fullscreen" : "Fullscreen", children: _jsx("button", { onClick: onToggleFullscreen, "aria-label": isFullscreen ? "Exit fullscreen" : "Enter fullscreen", className: "flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent/50", children: isFullscreen ? (_jsx(IconArrowsMinimize, { size: 14 })) : (_jsx(IconArrowsMaximize, { size: 14 })) }) })), onCollapse && (_jsx(IconTooltip, { content: "Collapse sidebar", children: _jsx("button", { onClick: onCollapse, "aria-label": "Collapse sidebar", className: "flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent/50", children: _jsx(IconLayoutSidebarRightCollapse, { size: 14 }) }) }))] })), [onCollapse, canUseCodeTools, onToggleFullscreen, isFullscreen]);
     const [tabMenuOpen, setTabMenuOpen] = useState(null);
     const [cliPickerOpen, setCliPickerOpen] = useState(false);
@@ -545,7 +562,7 @@ function AgentPanelInner({ defaultMode = "chat", className, apiUrl, emptyStateTe
                         `[data-agent-fullscreen='true'] .agent-composer-area{` +
                         `max-width:${FULLSCREEN_CONTENT_MAX_PX}px;` +
                         `margin-left:auto;margin-right:auto;width:100%;}`,
-                } }), SHOW_ONBOARDING && mounted && canUseCodeTools && (_jsx(Suspense, { fallback: null, children: _jsx(OnboardingPanel, {}) })), _jsx("div", { className: cn("flex flex-col min-h-0", mode === "chat" ? "flex-1" : "shrink-0"), children: mounted && (_jsx(MultiTabAssistantChat, { apiUrl: apiUrl, showHeader: false, renderHeader: showHeader ? renderChatHeader : undefined, renderOverlay: undefined, contentHidden: mode !== "chat", emptyStateText: emptyStateText, suggestions: suggestions, onSwitchToCli: () => switchMode("cli"), execMode: execMode, onExecModeChange: switchExecMode, storageKey: storageKey, scope: scope })) }), canUseCodeTools
+                } }), SHOW_ONBOARDING && mounted && canUseCodeTools && (_jsx(Suspense, { fallback: null, children: _jsx(OnboardingPanel, {}) })), _jsx("div", { className: cn("flex flex-col min-h-0", mode === "chat" ? "flex-1" : "shrink-0"), children: mounted && (_jsx(MultiTabAssistantChat, { ...assistantChatProps, apiUrl: apiUrl, showHeader: false, renderHeader: showHeader ? renderChatHeader : undefined, renderOverlay: undefined, contentHidden: mode !== "chat", emptyStateText: emptyStateText, emptyStateAddon: emptyStateAddon, suggestions: suggestions, dynamicSuggestions: dynamicSuggestions, onSwitchToCli: () => switchMode("cli"), execMode: execMode, onExecModeChange: switchExecMode, storageKey: storageKey, scope: scope, browserTabId: browserTabId })) }), canUseCodeTools
                 ? mode === "cli" &&
                     cliTabs.map((id) => (_jsx("div", { className: "min-h-0 relative flex-1", style: {
                             display: id === activeCliTab ? undefined : "none",
@@ -554,7 +571,7 @@ function AgentPanelInner({ defaultMode = "chat", className, apiUrl, emptyStateTe
                             ? "CLI requires dev mode"
                             : codeUnavailableTitle, description: codeAccessEnabled
                             ? "Run this app locally with pnpm dev or use Builder.io to access the CLI terminal."
-                            : codeUnavailableDescription, ctaLabel: codeUnavailableCtaLabel, ctaHref: codeAccessEnabled ? undefined : codeUnavailableCtaHref, secondaryCtaLabel: codeUnavailableSecondaryCtaLabel, secondaryCtaHref: codeUnavailableSecondaryCtaHref }) })), mode === "resources" && (_jsx("div", { className: "flex-1 min-h-0", children: codeAccessEnabled ? (_jsx(Suspense, { fallback: _jsx("div", { className: "flex h-full flex-col min-h-0", children: _jsx("div", { className: "flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5", children: _jsxs("div", { className: "flex items-center gap-1", children: [_jsx("div", { className: "h-5 w-16 rounded bg-muted animate-pulse" }), _jsx("div", { className: "h-5 w-14 rounded bg-muted animate-pulse" })] }) }) }), children: _jsx(ResourcesPanel, {}) })) : (_jsx("div", { className: "flex h-full items-center justify-center px-6", children: _jsx(CodeAccessUnavailablePanel, { title: "Open Desktop to use Workspace", description: codeUnavailableDescription, ctaLabel: codeUnavailableCtaLabel, ctaHref: codeUnavailableCtaHref, secondaryCtaLabel: codeUnavailableSecondaryCtaLabel, secondaryCtaHref: codeUnavailableSecondaryCtaHref }) })) })), mode === "settings" && (_jsx("div", { className: "flex flex-col flex-1 min-h-0", children: _jsx(Suspense, { fallback: _jsxs("div", { className: "p-3 space-y-2", children: [_jsx("div", { className: "h-10 w-full rounded-lg bg-muted animate-pulse" }), _jsx("div", { className: "h-10 w-full rounded-lg bg-muted animate-pulse" }), _jsx("div", { className: "h-10 w-full rounded-lg bg-muted animate-pulse" })] }), children: _jsx(SettingsPanel, { isDevMode: isDevMode, onToggleDevMode: () => setDevMode(!isDevMode), showDevToggle: showDevToggle, devAppUrl: devAppUrl, initialSection: settingsSection.section, sectionRequestKey: settingsSection.requestKey }) }) }))] }));
+                            : codeUnavailableDescription, ctaLabel: codeUnavailableCtaLabel, ctaHref: codeAccessEnabled ? undefined : codeUnavailableCtaHref, secondaryCtaLabel: codeUnavailableSecondaryCtaLabel, secondaryCtaHref: codeUnavailableSecondaryCtaHref }) })), mode === "resources" && (_jsx("div", { className: "flex-1 min-h-0", children: _jsx(Suspense, { fallback: _jsx("div", { className: "flex h-full flex-col min-h-0", children: _jsx("div", { className: "flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5", children: _jsxs("div", { className: "flex items-center gap-1", children: [_jsx("div", { className: "h-5 w-16 rounded bg-muted animate-pulse" }), _jsx("div", { className: "h-5 w-14 rounded bg-muted animate-pulse" })] }) }) }), children: _jsx(ResourcesPanel, {}) }) })), mode === "settings" && (_jsx("div", { className: "flex flex-col flex-1 min-h-0", children: _jsx(Suspense, { fallback: _jsxs("div", { className: "p-3 space-y-2", children: [_jsx("div", { className: "h-10 w-full rounded-lg bg-muted animate-pulse" }), _jsx("div", { className: "h-10 w-full rounded-lg bg-muted animate-pulse" }), _jsx("div", { className: "h-10 w-full rounded-lg bg-muted animate-pulse" })] }), children: _jsx(SettingsPanel, { isDevMode: isDevMode, onToggleDevMode: () => setDevMode(!isDevMode), showDevToggle: showDevToggle, devAppUrl: devAppUrl, initialSection: settingsSection.section, sectionRequestKey: settingsSection.requestKey }) }) }))] }));
 }
 // ─── Resize handle ──────────────────────────────────────────────────────────
 const SIDEBAR_STORAGE_KEY = "agent-native-sidebar-width";
@@ -667,10 +684,19 @@ function ResizeHandle({ position, onDrag, }) {
  *                 the command, applies it via react-router, then deletes
  *                 the key. The UI reacts in one tick, no page reload.
  */
-function URLSync() {
+const SAFE_BROWSER_TAB_ID_RE = /^[A-Za-z0-9_-]{1,96}$/;
+function URLSync({ browserTabId }) {
     const location = useLocation();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const normalizedBrowserTabId = React.useMemo(() => {
+        if (typeof browserTabId !== "string")
+            return undefined;
+        const trimmed = browserTabId.trim();
+        return SAFE_BROWSER_TAB_ID_RE.test(trimmed) ? trimmed : undefined;
+    }, [browserTabId]);
+    const appStateKey = React.useCallback((key) => normalizedBrowserTabId ? `${key}:${normalizedBrowserTabId}` : key, [normalizedBrowserTabId]);
+    const setUrlQueryKey = React.useMemo(() => ["__set_url__", normalizedBrowserTabId ?? "global"], [normalizedBrowserTabId]);
     // Outbound: write the current URL to app-state whenever it changes.
     React.useEffect(() => {
         const searchParams = {};
@@ -683,13 +709,22 @@ function URLSync() {
             hash: location.hash,
             searchParams,
         };
-        fetch(agentNativePath("/_agent-native/application-state/__url__"), {
+        const write = (key) => fetch(agentNativePath(`/_agent-native/application-state/${key}`), {
             method: "PUT",
             keepalive: true,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         }).catch(() => { });
-    }, [location.pathname, location.search, location.hash]);
+        write(appStateKey("__url__"));
+        if (normalizedBrowserTabId)
+            write("__url__");
+    }, [
+        appStateKey,
+        location.pathname,
+        location.search,
+        location.hash,
+        normalizedBrowserTabId,
+    ]);
     // Inbound: poll for URL-update commands from the agent. `useDbSync`
     // invalidates this key on every relevant app-state event, so default
     // `structuralSharing: true` is critical — without it, repeated reads of the
@@ -700,17 +735,22 @@ function URLSync() {
     // actually changes; the `lastProcessedDedupKeyRef` below covers the residual
     // race window after the cache is cleared to `null`.
     const { data: command } = useQuery({
-        queryKey: ["__set_url__"],
+        queryKey: setUrlQueryKey,
         queryFn: async () => {
-            try {
-                const res = await fetch(agentNativePath("/_agent-native/application-state/__set_url__"));
+            const read = async (key) => {
+                const res = await fetch(agentNativePath(`/_agent-native/application-state/${key}`));
                 if (!res.ok || res.status === 204)
                     return null;
                 const text = await res.text();
                 if (!text)
                     return null;
                 const data = JSON.parse(text);
-                return data ?? null;
+                return data ? { key, command: data } : null;
+            };
+            try {
+                return ((normalizedBrowserTabId
+                    ? await read(appStateKey("__set_url__"))
+                    : null) ?? (await read("__set_url__")));
             }
             catch {
                 return null;
@@ -723,7 +763,7 @@ function URLSync() {
     React.useEffect(() => {
         if (!command)
             return;
-        const cmd = command;
+        const cmd = command.command;
         const dedupKey = cmd._writeId ??
             JSON.stringify({
                 pathname: cmd.pathname,
@@ -736,17 +776,17 @@ function URLSync() {
             // next polling refetch, so when it loses the same command can show up
             // again on the next tick. Re-fire DELETE and bail rather than navigate
             // again.
-            fetch(agentNativePath("/_agent-native/application-state/__set_url__"), {
+            fetch(agentNativePath(`/_agent-native/application-state/${command.key}`), {
                 method: "DELETE",
                 headers: { "X-Agent-Native-CSRF": "1" },
             }).catch(() => { });
-            queryClient.setQueryData(["__set_url__"], null);
+            queryClient.setQueryData(setUrlQueryKey, null);
             return;
         }
         lastProcessedDedupKeyRef.current = dedupKey;
         // Delete the one-shot command before applying so duplicate events
         // don't cause repeated navigation.
-        fetch(agentNativePath("/_agent-native/application-state/__set_url__"), {
+        fetch(agentNativePath(`/_agent-native/application-state/${command.key}`), {
             method: "DELETE",
             headers: { "X-Agent-Native-CSRF": "1" },
         }).catch(() => { });
@@ -783,7 +823,7 @@ function URLSync() {
             }
             const currentUrl = current.pathname + (current.search || "") + (current.hash || "");
             if (url === currentUrl) {
-                queryClient.setQueryData(["__set_url__"], null);
+                queryClient.setQueryData(setUrlQueryKey, null);
                 return;
             }
             // Replace rather than push so repeated agent URL updates don't
@@ -794,8 +834,8 @@ function URLSync() {
         catch {
             // Malformed command — ignore.
         }
-        queryClient.setQueryData(["__set_url__"], null);
-    }, [command, navigate, queryClient]);
+        queryClient.setQueryData(setUrlQueryKey, null);
+    }, [command, navigate, queryClient, setUrlQueryKey]);
     return null;
 }
 function ScreenRefreshBoundary({ children }) {
@@ -812,18 +852,66 @@ function ScreenRefreshBoundary({ children }) {
     return _jsx(React.Fragment, { children: children }, key);
 }
 class AgentPanelErrorBoundary extends React.Component {
-    state = { error: null };
+    state = {
+        error: null,
+        staleIndexRecoveryCount: 0,
+    };
+    recoveryTimer = null;
+    recoveryCooldownTimer = null;
     static getDerivedStateFromError(error) {
         return { error };
     }
     componentDidCatch(error, errorInfo) {
+        if (isAssistantUiStaleIndexError(error)) {
+            console.warn("[agent-native] Recovering agent panel after stale UI index");
+            if (this.state.staleIndexRecoveryCount >= 2) {
+                console.error("[agent-native] Agent panel stale-index recovery failed", error, errorInfo);
+                return;
+            }
+            if (!this.recoveryTimer) {
+                this.recoveryTimer = setTimeout(() => {
+                    this.recoveryTimer = null;
+                    this.setState((state) => ({
+                        error: null,
+                        staleIndexRecoveryCount: state.staleIndexRecoveryCount + 1,
+                    }));
+                    this.props.onReset();
+                }, 0);
+            }
+            return;
+        }
         console.error("[agent-native] Agent panel crashed", error, errorInfo);
+    }
+    componentDidUpdate(_prevProps, prevState) {
+        if (prevState.error &&
+            !this.state.error &&
+            this.state.staleIndexRecoveryCount > 0) {
+            if (this.recoveryCooldownTimer) {
+                clearTimeout(this.recoveryCooldownTimer);
+            }
+            this.recoveryCooldownTimer = setTimeout(() => {
+                this.recoveryCooldownTimer = null;
+                this.setState((state) => state.error ? null : { staleIndexRecoveryCount: 0 });
+            }, 2_000);
+        }
+    }
+    componentWillUnmount() {
+        if (this.recoveryTimer) {
+            clearTimeout(this.recoveryTimer);
+        }
+        if (this.recoveryCooldownTimer) {
+            clearTimeout(this.recoveryCooldownTimer);
+        }
     }
     render() {
         if (!this.state.error)
             return this.props.children;
+        if (isAssistantUiStaleIndexError(this.state.error) &&
+            this.state.staleIndexRecoveryCount < 2) {
+            return (_jsx("div", { className: "flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground", children: "Reloading chat UI..." }));
+        }
         return (_jsxs("div", { className: "flex h-full flex-col items-center justify-center gap-3 p-6 text-center", children: [_jsxs("div", { className: "max-w-[260px] space-y-1", children: [_jsx("p", { className: "text-sm font-medium text-foreground", children: "Agent panel hit an internal UI error." }), _jsx("p", { className: "text-xs leading-relaxed text-muted-foreground", children: "The app is still usable. Reset the panel to reload the chat UI." })] }), _jsx("button", { type: "button", className: "rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent", onClick: () => {
-                        this.setState({ error: null });
+                        this.setState({ error: null, staleIndexRecoveryCount: 0 });
                         this.props.onReset();
                     }, children: "Reset agent panel" })] }));
     }
@@ -841,10 +929,21 @@ export function AgentPanel(props) {
     return (_jsx(TooltipProvider, { delayDuration: 200, children: _jsx(AgentPanelErrorBoundary, { onReset: resetPanel, children: _jsx(AgentPanelInner, { ...props }, resetKey) }) }));
 }
 /**
+ * Reusable chat surface backed by AgentPanel internals.
+ *
+ * This gives page-level routes the same tabbed conversations, composer,
+ * model controls, scoped chat behavior, and recovery boundary used by the
+ * sidebar without introducing a second chat implementation.
+ */
+export function AgentChatSurface({ mode = "panel", className, defaultMode = "chat", isFullscreen, ...props }) {
+    const pageMode = mode === "page";
+    return (_jsx(AgentPanel, { ...props, defaultMode: defaultMode, isFullscreen: isFullscreen ?? pageMode, className: cn(pageMode && "h-full min-h-0 w-full overflow-hidden bg-background", className) }));
+}
+/**
  * Wraps app content with a toggleable agent sidebar.
  * Use AgentToggleButton in your header to open/close it.
  */
-export function AgentSidebar({ children, emptyStateText = "How can I help you?", suggestions, defaultSidebarWidth, sidebarWidth, position = "right", defaultOpen = false, animateMobile = false, scope, }) {
+export function AgentSidebar({ children, emptyStateText = "How can I help you?", suggestions, dynamicSuggestions, defaultSidebarWidth, sidebarWidth, position = "right", defaultOpen = false, animateMobile = false, scope, browserTabId, }) {
     const initialWidth = defaultSidebarWidth ?? sidebarWidth ?? 380;
     const [open, setOpen] = useState(() => getInitialAgentSidebarOpen(defaultOpen));
     const [presentationMode, setPresentationMode] = useState(false);
@@ -893,6 +992,11 @@ export function AgentSidebar({ children, emptyStateText = "How can I help you?",
             return value;
         });
     }, []);
+    useEffect(() => {
+        const override = consumeAgentSidebarUrlOpenOverride();
+        if (override !== null)
+            setOpenPersisted(override);
+    }, [setOpenPersisted]);
     const toggleFullscreen = useCallback(() => {
         setFullscreen((prev) => {
             const next = !prev;
@@ -906,10 +1010,44 @@ export function AgentSidebar({ children, emptyStateText = "How can I help you?",
     // Track whether the frame is controlling the sidebar (code mode = frame active).
     // Default to true when inside an iframe — assume the frame sidebar is active
     // until told otherwise. This prevents both sidebars flashing after hot reloads.
-    const [frameCodeMode, setFrameCodeMode] = useState(() => typeof window !== "undefined" && window.parent !== window);
+    const [frameCodeMode, setFrameCodeMode] = useState(() => shouldParentFrameOwnAgentPanel());
+    // Frame sidebar visibility: we don't know the frame's open/closed state at
+    // mount, so start at false and wait for the frame to dispatch its real
+    // state via the message handler below. Initializing to
+    // `shouldParentFrameOwnAgentPanel()` here was a category error — that
+    // helper reports ownership (which side renders the sidebar), not whether
+    // the sidebar is currently open. Mixing them up dispatched a stale
+    // "open: true" before the first frame message arrived.
+    const [frameSidebarOpen, setFrameSidebarOpen] = useState(false);
+    // Has the frame told us its sidebar state yet? In frame-owned mode we
+    // don't know whether the sidebar is open or closed until the parent frame
+    // dispatches `agentNative.sidebarMode`. Emitting a synthetic
+    // `{ open: false }` before that message arrives makes downstream listeners
+    // flip a moment later when the real state lands, which is the same
+    // ownership-vs-open-state confusion the previous fix addressed.
+    const [hasFrameSidebarState, setHasFrameSidebarState] = useState(false);
+    useEffect(() => {
+        const frameOwned = frameCodeMode && shouldParentFrameOwnAgentPanel();
+        // Skip the initial emit in frame-owned mode — wait until the frame has
+        // sent us its real sidebar state. Once we know, this effect re-runs and
+        // dispatches the correct value.
+        if (frameOwned && !hasFrameSidebarState)
+            return;
+        dispatchAgentSidebarStateChange({
+            open: !presentationMode && (frameOwned ? frameSidebarOpen : open),
+            source: frameOwned ? "frame" : "app",
+            mode: frameOwned ? "code" : "app",
+        });
+    }, [
+        frameCodeMode,
+        frameSidebarOpen,
+        open,
+        presentationMode,
+        hasFrameSidebarState,
+    ]);
     useEffect(() => {
         const toggleHandler = () => {
-            if (frameCodeMode && window.parent !== window) {
+            if (frameCodeMode && shouldParentFrameOwnAgentPanel()) {
                 // Forward toggle to frame parent — the frame sidebar handles it
                 window.parent.postMessage({ type: "agentNative.toggleSidebar" }, parentFrameTargetOrigin());
             }
@@ -918,7 +1056,7 @@ export function AgentSidebar({ children, emptyStateText = "How can I help you?",
             }
         };
         const openHandler = () => {
-            if (frameCodeMode && window.parent !== window) {
+            if (frameCodeMode && shouldParentFrameOwnAgentPanel()) {
                 window.parent.postMessage({ type: "agentNative.toggleSidebar", data: { open: true } }, parentFrameTargetOrigin());
             }
             else {
@@ -926,7 +1064,7 @@ export function AgentSidebar({ children, emptyStateText = "How can I help you?",
             }
         };
         const closeHandler = () => {
-            if (frameCodeMode && window.parent !== window) {
+            if (frameCodeMode && shouldParentFrameOwnAgentPanel()) {
                 window.parent.postMessage({ type: "agentNative.toggleSidebar", data: { open: false } }, parentFrameTargetOrigin());
             }
             else {
@@ -957,14 +1095,16 @@ export function AgentSidebar({ children, emptyStateText = "How can I help you?",
             if (mode === "code") {
                 // Frame is showing its own sidebar — hide the app's
                 setFrameCodeMode(true);
+                setFrameSidebarOpen(frameOpen !== false);
+                setHasFrameSidebarState(true);
                 setOpenPersisted(false);
             }
             else if (mode === "app") {
                 // Frame deferred to the app — show and sync width + mode
                 setFrameCodeMode(false);
-                if (frameOpen !== false) {
-                    setOpenPersisted(true);
-                }
+                setFrameSidebarOpen(false);
+                setHasFrameSidebarState(true);
+                setOpenPersisted(frameOpen !== false);
                 if (frameWidth &&
                     frameWidth >= SIDEBAR_MIN &&
                     frameWidth <= SIDEBAR_MAX) {
@@ -983,11 +1123,18 @@ export function AgentSidebar({ children, emptyStateText = "How can I help you?",
         window.addEventListener("message", handleMessage);
         return () => window.removeEventListener("message", handleMessage);
     }, [setOpenPersisted]);
-    // Cmd+I / Ctrl+I to focus the agent chat. If the user has selected text,
-    // capture it into application_state under `pending-selection-context` so
-    // the agent's next turn includes it as immediate context to act on.
+    // Cmd+\ / Ctrl+\ toggles the agent sidebar globally. Cmd+I / Ctrl+I focuses
+    // chat and attaches selected page text as one-shot context for the next turn.
     useEffect(() => {
         const handleKeyDown = (e) => {
+            if ((e.metaKey || e.ctrlKey) &&
+                !e.altKey &&
+                !e.shiftKey &&
+                (e.key === "\\" || e.code === "Backslash")) {
+                e.preventDefault();
+                window.dispatchEvent(new Event("agent-panel:toggle"));
+                return;
+            }
             if ((e.metaKey || e.ctrlKey) && e.key === "i") {
                 e.preventDefault();
                 let selectionText = "";
@@ -1101,9 +1248,9 @@ export function AgentSidebar({ children, emptyStateText = "How can I help you?",
     // any in-progress or completed conversations.
     const sidebar = (_jsxs(_Fragment, { children: [showResizeHandle && !isLeft && (_jsx(ResizeHandle, { position: position, onDrag: handleDrag })), _jsx("div", { className: cn("agent-sidebar-panel flex shrink-0 flex-col overflow-hidden text-[13px] leading-[1.2] antialiased", animateMobile &&
                     isMobile &&
-                    "shadow-2xl transition-transform duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"), style: panelStyle, inert: isMobile && !open ? true : undefined, "aria-hidden": isMobile && !open ? true : undefined, children: _jsx(AgentPanel, { emptyStateText: emptyStateText, suggestions: suggestions, onCollapse: () => setOpenPersisted(false), isFullscreen: effectiveFullscreen, onToggleFullscreen: isMobile ? undefined : toggleFullscreen, scope: scope }) }), showResizeHandle && isLeft && (_jsx(ResizeHandle, { position: position, onDrag: handleDrag }))] }));
+                    "shadow-2xl transition-transform duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"), style: panelStyle, inert: isMobile && !open ? true : undefined, "aria-hidden": isMobile && !open ? true : undefined, children: _jsx(AgentPanel, { emptyStateText: emptyStateText, suggestions: suggestions, dynamicSuggestions: dynamicSuggestions, onCollapse: () => setOpenPersisted(false), isFullscreen: effectiveFullscreen, onToggleFullscreen: isMobile ? undefined : toggleFullscreen, scope: scope, browserTabId: browserTabId }) }), showResizeHandle && isLeft && (_jsx(ResizeHandle, { position: position, onDrag: handleDrag }))] }));
     return (_jsxs("div", { className: "flex min-w-0 flex-1 h-screen overflow-hidden", children: [isMobile && !presentationMode && (animateMobile || open) && (_jsx("div", { className: cn("fixed inset-0 bg-black/40", animateMobile &&
-                    "transition-opacity duration-200 motion-reduce:transition-none", animateMobile && !open && "pointer-events-none opacity-0", animateMobile && open && "opacity-100"), style: { zIndex: SIDEBAR_OVERLAY_Z_INDEX - 1 }, onClick: () => setOpenPersisted(false) })), _jsx(URLSync, {}), isLeft && !presentationMode ? sidebar : null, _jsx("div", { className: "flex flex-1 flex-col overflow-auto min-w-0", children: _jsx(ScreenRefreshBoundary, { children: children }) }), !isLeft && !presentationMode ? sidebar : null] }));
+                    "transition-opacity duration-200 motion-reduce:transition-none", animateMobile && !open && "pointer-events-none opacity-0", animateMobile && open && "opacity-100"), style: { zIndex: SIDEBAR_OVERLAY_Z_INDEX - 1 }, onClick: () => setOpenPersisted(false) })), _jsx(URLSync, { browserTabId: browserTabId }), isLeft && !presentationMode ? sidebar : null, _jsx("div", { className: "flex flex-1 flex-col overflow-auto min-w-0", children: _jsx(ScreenRefreshBoundary, { children: children }) }), !isLeft && !presentationMode ? sidebar : null] }));
 }
 /**
  * Focus the agent chat composer input.

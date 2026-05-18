@@ -70,6 +70,12 @@ export function defineAction(options) {
     const parallelSafe = typeof options.parallelSafe === "boolean"
         ? options.parallelSafe
         : undefined;
+    const publicAgent = options.publicAgent &&
+        typeof options.publicAgent === "object" &&
+        !Array.isArray(options.publicAgent)
+        ? options.publicAgent
+        : undefined;
+    const link = typeof options.link === "function" ? options.link : undefined;
     return {
         tool: {
             description: options.description,
@@ -81,6 +87,8 @@ export function defineAction(options) {
         ...(typeof readOnly === "boolean" ? { readOnly } : {}),
         ...(typeof parallelSafe === "boolean" ? { parallelSafe } : {}),
         ...(typeof toolCallable === "boolean" ? { toolCallable } : {}),
+        ...(publicAgent ? { publicAgent } : {}),
+        ...(link ? { link } : {}),
     };
 }
 // ---------------------------------------------------------------------------

@@ -81,6 +81,33 @@ export declare function isLocalDatabase(): boolean;
 export declare function intType(): string;
 export declare function isConnectionError(err: any): boolean;
 export declare function retryOnConnectionError<T>(fn: () => Promise<T>, maxAttempts?: number): Promise<T>;
+/**
+ * True on serverless function runtimes (Netlify / Vercel / AWS Lambda /
+ * Cloudflare Pages Functions) where every concurrent request can spin up its
+ * own frozen process. Connections cannot be shared across instances, so each
+ * instance must keep its pool tiny — otherwise dozens of warm instances each
+ * holding postgres.js's default 10-connection pool blow past Neon/Postgres'
+ * connection cap and every `/_agent-native/*` route 500s with "Max client
+ * connections reached".
+ */
+export declare function isServerlessRuntime(): boolean;
+/**
+ * postgres.js pool options tuned per runtime. A serverless instance handles
+ * one request at a time, so a tiny pool is enough — but we cap at 2 (not 1)
+ * so a single slow query or open transaction can't serialize every other
+ * query in the same request. Total connections stay bounded to ≈ 2×
+ * concurrent-instance count instead of 10×. idle_timeout is shortened on
+ * serverless so a thawed-but-idle instance releases its connections quickly.
+ * Long-lived Node servers keep the normal pool for throughput.
+ */
+export declare function pgPoolOptions(url: string): Record<string, unknown>;
+/**
+ * Connection cap for the @neondatabase/serverless `Pool`. Same instance
+ * accumulation risk as postgres.js — a small pool (2) is enough on serverless
+ * and keeps total connections bounded while still letting a second query
+ * proceed when one connection is busy.
+ */
+export declare function neonPoolMax(): number;
 export declare function createDbExec(config?: DbExecConfig): Promise<DbExec>;
 /**
  * Get the singleton database client. Returns a `DbExec` whose first

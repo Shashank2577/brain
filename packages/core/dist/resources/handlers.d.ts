@@ -28,6 +28,10 @@ export declare function handleListResources(event: any): Promise<{
 export declare function handleGetResourceTree(event: any): Promise<{
     tree: TreeNode[];
 }>;
+/** GET /_agent-native/resources/effective?path=... — show inheritance stack */
+export declare function handleGetEffectiveResourceContext(event: any): Promise<import("./store.js").EffectiveResourceContext | {
+    error: string;
+}>;
 /** GET /_agent-native/resources/:id — get single resource with content.
  *  If the request comes from an <img>/<video>/etc tag (Accept includes the
  *  resource's mime type, or query param `?raw` is set), return the raw binary
@@ -65,6 +69,12 @@ export declare function handleUploadResource(event: any): Promise<Resource | {
     size: number;
     createdAt: number;
     updatedAt: number;
+    createdBy: import("./store.js").ResourceCreatedBy;
+    visibility: import("./store.js").ResourceVisibility;
+    threadId: string | null;
+    runId: string | null;
+    expiresAt: number | null;
+    metadata: string | null;
     error?: undefined;
 }>;
 export {};

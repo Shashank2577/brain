@@ -3,5 +3,5 @@
  */
 import type { ActionTool } from "../../agent/types.js";
 export declare const tool: ActionTool;
-export declare function run(): Promise<string>;
+export declare function run(args?: Record<string, string>): Promise<string>;
 //# sourceMappingURL=list-agent-engines.d.ts.map

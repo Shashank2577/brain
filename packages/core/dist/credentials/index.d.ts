@@ -2,6 +2,17 @@ export interface CredentialContext {
     userEmail: string;
     orgId?: string | null;
 }
+export type CredentialStorageScope = "user" | "org";
+/**
+ * Resolve a credential from one explicit legacy SQL credential scope.
+ *
+ * Prefer `resolveCredential()` for normal app-local credential lookup. This
+ * helper exists for workspace connection refs, where a ref can explicitly say
+ * "use the org-scoped key" and must not accidentally read a user override.
+ */
+export declare function resolveCredentialForScope(key: string, ctx: CredentialContext & {
+    scope: CredentialStorageScope;
+}): Promise<string | undefined>;
 /**
  * Resolve a credential, scoped to the caller's user (and falling back to
  * the active org's shared credential, if any).

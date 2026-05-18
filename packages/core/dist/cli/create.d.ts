@@ -65,7 +65,7 @@ export declare function detectWorkspace(startDir: string): {
 } | null;
 export { parseWorkspaceScope };
 /** @internal — exported for E2E tests */
-export { scaffoldWorkspaceRoot as _scaffoldWorkspaceRoot, scaffoldAppTemplate as _scaffoldAppTemplate, scaffoldRequiredPackages as _scaffoldRequiredPackages, postProcessStandalone as _postProcessStandalone, loadCatalog as _loadCatalog, fixPackageJsonName as _fixPackageJsonName, renameGitignore as _renameGitignore, rewriteNetlifyToml as _rewriteNetlifyToml, getCoreDependencyVersion as _getCoreDependencyVersion, getGitHubTemplateRef as _getGitHubTemplateRef, getGitHubTemplateRefCandidates as _getGitHubTemplateRefCandidates, shouldSkipScaffoldEntry as _shouldSkipScaffoldEntry, tarExtractArgs as _tarExtractArgs, };
+export { scaffoldWorkspaceRoot as _scaffoldWorkspaceRoot, scaffoldAppTemplate as _scaffoldAppTemplate, scaffoldRequiredPackages as _scaffoldRequiredPackages, postProcessStandalone as _postProcessStandalone, loadCatalog as _loadCatalog, fixPackageJsonName as _fixPackageJsonName, renameGitignore as _renameGitignore, rewriteNetlifyToml as _rewriteNetlifyToml, getCoreDependencyVersion as _getCoreDependencyVersion, getDispatchDependencyVersion as _getDispatchDependencyVersion, getGitHubTemplateRef as _getGitHubTemplateRef, getGitHubTemplateRefCandidates as _getGitHubTemplateRefCandidates, shouldSkipScaffoldEntry as _shouldSkipScaffoldEntry, tarExtractArgs as _tarExtractArgs, };
 declare function tarExtractArgs(tarPath: string, destDir: string, options?: {
     skipAgentSymlinks?: boolean;
 }): string[];
@@ -78,6 +78,7 @@ declare function tarExtractArgs(tarPath: string, destDir: string, options?: {
 declare function loadCatalog(): Record<string, string>;
 declare function fixPackageJsonName(appDir: string, name: string, templateName?: string): void;
 declare function getCoreDependencyVersion(): string;
+declare function getDispatchDependencyVersion(): string;
 /**
  * Git refs to try, in priority order, when downloading templates from the
  * framework repo. The release tag scheme has shifted over time:

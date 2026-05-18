@@ -16,7 +16,7 @@ export default async function resourceDeleteScript(args) {
 
 Options:
   --path <path>            Resource path (required)
-  --scope personal|shared  Scope to delete from (default: personal)
+  --scope personal|shared  Scope to delete from (default: personal). Workspace resources are managed from Dispatch.
   --help                   Show this help message`);
         return;
     }
@@ -25,6 +25,9 @@ Options:
         fail("--path is required. Example: --path notes/todo.md");
     }
     const scope = parsed.scope ?? "personal";
+    if (scope === "workspace") {
+        fail("Workspace resources are managed from Dispatch. Use resource-delete for personal or shared app resources.");
+    }
     let owner;
     if (scope === "shared") {
         owner = SHARED_OWNER;

@@ -82,6 +82,49 @@ export declare function getBetterAuth(config?: BetterAuthConfig): Promise<Better
  * Use this in hot paths where you know init has already happened.
  */
 export declare function getBetterAuthSync(): BetterAuthInstance | undefined;
+/**
+ * The subset of Better Auth's internal adapter we use for federated-SSO
+ * JIT account linking. Better Auth owns these writes (id + timestamp +
+ * schema handling), so callers never hand-roll SQL against `user`/`account`.
+ * Read-only lookups + strictly-additive `linkAccount`/`createUser` only — no
+ * update/delete of existing identity rows.
+ */
+export interface BetterAuthInternalAdapter {
+    findUserByEmail: (email: string, options?: {
+        includeAccounts: boolean;
+    }) => Promise<{
+        user: {
+            id: string;
+            email: string;
+            name?: string;
+        };
+        accounts: Array<{
+            providerId: string;
+            accountId: string;
+        }>;
+    } | null>;
+    linkAccount: (account: {
+        userId: string;
+        providerId: string;
+        accountId: string;
+    }) => Promise<unknown>;
+    createUser: (user: {
+        email: string;
+        name: string;
+        emailVerified?: boolean;
+    }) => Promise<{
+        id: string;
+    }>;
+}
+/**
+ * Resolve Better Auth's internal adapter via the live instance's
+ * `$context`. The framework's narrowed `BetterAuthInstance` interface omits
+ * `$context`, but the underlying object created by `betterAuth(...)` always
+ * exposes it (see Better Auth's `Auth` type) — so this is a safe, typed
+ * accessor for the federated-SSO client. Returns `undefined` if the context
+ * shape is unexpected (older/newer Better Auth) so callers can fall back.
+ */
+export declare function getBetterAuthInternalAdapter(config?: BetterAuthConfig): Promise<BetterAuthInternalAdapter | undefined>;
 /** Reset for testing */
 export declare function resetBetterAuth(): Promise<void>;
 //# sourceMappingURL=better-auth-instance.d.ts.map

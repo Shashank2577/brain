@@ -1,6 +1,7 @@
 export interface A2ACallerAuth {
     apiKey?: string;
     userEmail?: string;
+    orgId?: string;
     orgDomain?: string;
     orgSecret?: string;
     metadata: Record<string, unknown>;

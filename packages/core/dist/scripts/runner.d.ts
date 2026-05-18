@@ -9,11 +9,21 @@
  *
  * Usage: pnpm action <action-name> [--args]
  */
+import type { ActionEntry } from "../agent/production-agent.js";
+export interface RunScriptOptions {
+    /**
+     * Actions contributed by packages rather than the app's local `actions/`
+     * directory. Local app actions still win on name collision.
+     */
+    packageActions?: Record<string, ActionEntry>;
+    /** Help-section label for package actions. */
+    packageActionLabel?: string;
+}
 /**
  * Run the action dispatcher. Call this from your app's actions/run.ts (or scripts/run.ts):
  *
  *   import { runScript } from "@agent-native/core";
  *   runScript();
  */
-export declare function runScript(): Promise<void>;
+export declare function runScript(options?: RunScriptOptions): Promise<void>;
 //# sourceMappingURL=runner.d.ts.map

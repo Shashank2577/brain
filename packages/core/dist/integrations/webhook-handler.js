@@ -396,8 +396,11 @@ async function processIncomingMessage(incoming, options, opts = {}) {
                     engineOption,
                     apiKey: effectiveApiKey,
                     model,
+                    appId: options.appId,
                 });
-                const resolvedModel = (await getStoredModelForEngine(engine)) ??
+                const resolvedModel = (await getStoredModelForEngine(engine, {
+                    appId: options.appId,
+                })) ??
                     model ??
                     engine.defaultModel;
                 return runAgentLoop({

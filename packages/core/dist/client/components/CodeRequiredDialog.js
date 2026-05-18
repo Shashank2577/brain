@@ -3,6 +3,8 @@ import { useEffect, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconPackageExport, IconCode, IconExternalLink, IconX, IconLoader2, } from "@tabler/icons-react";
 import { agentNativePath } from "../api-path.js";
+import { trackEvent } from "../analytics.js";
+import { withBuilderConnectTrackingParams } from "../settings/useBuilderStatus.js";
 const DESKTOP_DOWNLOAD_URL = "https://www.agent-native.com/download";
 function useBuilderConnected() {
     const [connected, setConnected] = useState(false);
@@ -15,7 +17,7 @@ function useBuilderConnected() {
             if (data) {
                 setConnected(!!data.configured);
                 setCloudAgentsAvailable(!!data.builderEnabled);
-                setConnectUrl(data.connectUrl || null);
+                setConnectUrl(data.cliAuthUrl || data.connectUrl || null);
             }
         })
             .catch(() => { });
@@ -33,7 +35,7 @@ export function CodeRequiredDialog({ open, onClose, featureLabel, }) {
     const [submitting, setSubmitting] = useState(false);
     const [branchUrl, setBranchUrl] = useState(null);
     const [error, setError] = useState(null);
-    const builderHref = connectUrl || agentNativePath("/_agent-native/builder/connect");
+    const builderHref = withBuilderConnectTrackingParams(connectUrl || agentNativePath("/_agent-native/builder/connect"), { source: "code_required_dialog", flow: "background_agent" });
     const handleKeyDown = useCallback((e) => {
         if (e.key === "Escape")
             onClose();
@@ -86,7 +88,7 @@ export function CodeRequiredDialog({ open, onClose, featureLabel, }) {
         return null;
     return createPortal(_jsx("div", { style: s.backdrop, onClick: onClose, children: _jsxs("div", { style: s.dialog, onClick: (e) => e.stopPropagation(), role: "dialog", "aria-modal": "true", children: [_jsxs("div", { style: s.header, children: [_jsx("div", { style: s.iconWrap, children: _jsx(IconPackageExport, { size: 20 }) }), _jsxs("div", { children: [_jsx("h2", { style: s.title, children: "Code changes required" }), _jsx("p", { style: s.subtitle, children: featureLabel
                                         ? `"${featureLabel}" creates or modifies source code, which needs Desktop or Builder from this surface.`
-                                        : "This action creates or modifies source code, which needs Desktop or Builder from this surface." })] })] }), _jsxs("div", { style: s.options, children: [_jsxs("a", { href: DESKTOP_DOWNLOAD_URL, target: "_blank", rel: "noreferrer", style: { ...s.optionCard, ...s.optionLink }, onMouseEnter: (e) => Object.assign(e.currentTarget.style, s.optionCardHover), onMouseLeave: (e) => Object.assign(e.currentTarget.style, { borderColor: "#e5e7eb" }), children: [_jsx("div", { style: s.optionIcon, children: _jsx(IconCode, { size: 24 }) }), _jsxs("div", { style: s.optionText, children: [_jsx("span", { style: s.optionTitle, children: "Use Brain Desktop" }), _jsx("span", { style: s.optionDesc, children: "Open the project in the desktop app to enable source edits, Workspace files, and CLI access." })] })] }), builderConnected && cloudAgentsAvailable ? (_jsxs("button", { style: {
+                                        : "This action creates or modifies source code, which needs Desktop or Builder from this surface." })] })] }), _jsxs("div", { style: s.options, children: [_jsxs("a", { href: DESKTOP_DOWNLOAD_URL, target: "_blank", rel: "noreferrer", style: { ...s.optionCard, ...s.optionLink }, onMouseEnter: (e) => Object.assign(e.currentTarget.style, s.optionCardHover), onMouseLeave: (e) => Object.assign(e.currentTarget.style, { borderColor: "#e5e7eb" }), children: [_jsx("div", { style: s.optionIcon, children: _jsx(IconCode, { size: 24 }) }), _jsxs("div", { style: s.optionText, children: [_jsx("span", { style: s.optionTitle, children: "Use Brain Desktop" }), _jsx("span", { style: s.optionDesc, children: "Open the project in the desktop app to enable source edits and CLI access." })] })] }), builderConnected && cloudAgentsAvailable ? (_jsxs("button", { style: {
                                 ...s.optionCard,
                                 ...(submitting
                                     ? { opacity: 0.7, pointerEvents: "none" }
@@ -95,7 +97,15 @@ export function CodeRequiredDialog({ open, onClose, featureLabel, }) {
                                 ...s.optionCard,
                                 cursor: "default",
                                 opacity: 0.85,
-                            }, children: [_jsx("div", { style: s.optionIcon, children: _jsx(IconExternalLink, { size: 24 }) }), _jsxs("div", { style: s.optionText, children: [_jsx("span", { style: s.optionTitle, children: "Builder Cloud Agents coming soon" }), _jsx("span", { style: s.optionDesc, children: "You don't have access yet. Use the desktop app or your local clone for this code change." })] }), _jsx("span", { style: s.badge, children: "Coming soon" })] })) : (_jsxs("a", { href: builderHref, target: "_blank", rel: "noreferrer", style: { ...s.optionCard, ...s.optionLink }, onMouseEnter: (e) => Object.assign(e.currentTarget.style, s.optionCardHover), onMouseLeave: (e) => Object.assign(e.currentTarget.style, {
+                            }, children: [_jsx("div", { style: s.optionIcon, children: _jsx(IconExternalLink, { size: 24 }) }), _jsxs("div", { style: s.optionText, children: [_jsx("span", { style: s.optionTitle, children: "Builder Cloud Agents coming soon" }), _jsx("span", { style: s.optionDesc, children: "You don't have access yet. Use the desktop app or your local clone for this code change." })] }), _jsx("span", { style: s.badge, children: "Coming soon" })] })) : (_jsxs("a", { href: builderHref, target: "_blank", rel: "noreferrer", onClick: () => {
+                                trackEvent("builder connect clicked", {
+                                    feature: "builder",
+                                    stage: "client",
+                                    source: "code_required_dialog",
+                                    flow: "background_agent",
+                                    connect_url_kind: connectUrl ? "provided" : "default",
+                                });
+                            }, style: { ...s.optionCard, ...s.optionLink }, onMouseEnter: (e) => Object.assign(e.currentTarget.style, s.optionCardHover), onMouseLeave: (e) => Object.assign(e.currentTarget.style, {
                                 borderColor: "#e5e7eb",
                             }), children: [_jsx("div", { style: s.optionIcon, children: _jsx(IconExternalLink, { size: 24 }) }), _jsxs("div", { style: s.optionText, children: [_jsx("span", { style: s.optionTitle, children: "Connect Builder.io" }), _jsx("span", { style: s.optionDesc, children: "Connect Builder to enable cloud-based code changes from this app." })] }), !connectUrl && _jsx("span", { style: s.badge, children: "Setup required" })] }))] }), branchUrl && (_jsxs("div", { style: s.result, children: [_jsx("span", { style: { fontSize: 13, fontWeight: 600 }, children: "Branch created" }), _jsx("a", { href: branchUrl, target: "_blank", rel: "noopener noreferrer", style: s.resultLink, children: branchUrl })] })), error && (_jsx("p", { style: { color: "#ef4444", fontSize: 12, marginTop: 12 }, children: error })), _jsx("button", { style: s.closeButton, onClick: onClose, "aria-label": "Close", children: _jsx(IconX, { size: 16 }) })] }) }), document.body);
 }

@@ -127,6 +127,7 @@ export function telegramAdapter() {
                     chatId: chat.id,
                     chatType: chat.type,
                     messageId: message.message_id,
+                    rawText: text,
                     fromId: from?.id,
                     fromUsername: from?.username,
                 },

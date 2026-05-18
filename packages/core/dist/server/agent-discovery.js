@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { TEMPLATES } from "../cli/templates-meta.js";
+import { getRequestOrgId, getRequestUserEmail } from "./request-context.js";
+import { DEFAULT_WORKSPACE_APP_AUDIENCE, normalizeWorkspaceAppAudience, normalizeWorkspaceAppPathList, workspaceAppAudienceFromPackageJson, workspaceAppRouteAccessFromPackageJson, } from "../shared/workspace-app-audience.js";
 /**
  * Built-in agent registry. Derive this from the published CLI metadata so
  * connected-agent discovery stays aligned with first-party template metadata
@@ -19,6 +21,123 @@ const BUILTIN_AGENTS = TEMPLATES.filter((template) => (!template.hidden || templ
 const HIDDEN_FIRST_PARTY_AGENT_IDS = new Set(TEMPLATES.filter((template) => template.hidden && !template.defaultAgent && template.prodUrl).map((template) => template.name));
 const WORKSPACE_APPS_ENV_KEY = "AGENT_NATIVE_WORKSPACE_APPS_JSON";
 const WORKSPACE_APPS_MANIFEST_FILE = "workspace-apps.json";
+export const WORKSPACE_APP_METADATA_SETTINGS_KEY = "workspace-app-metadata";
+export function workspaceAppMetadataSettingsKey(input) {
+    const orgId = input?.orgId ?? getRequestOrgId() ?? null;
+    if (orgId)
+        return `${WORKSPACE_APP_METADATA_SETTINGS_KEY}:org:${orgId}`;
+    const userEmail = input?.userEmail ?? getRequestUserEmail() ?? null;
+    if (userEmail)
+        return `${WORKSPACE_APP_METADATA_SETTINGS_KEY}:user:${userEmail}`;
+    return null;
+}
+function cleanOptionalText(value) {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+export function parseWorkspaceAppMetadataSettings(raw) {
+    const record = raw && typeof raw === "object" && !Array.isArray(raw)
+        ? raw
+        : {};
+    const rawApps = record.apps &&
+        typeof record.apps === "object" &&
+        !Array.isArray(record.apps)
+        ? record.apps
+        : {};
+    const apps = {};
+    for (const [id, value] of Object.entries(rawApps)) {
+        if (!id.trim() || !value || typeof value !== "object")
+            continue;
+        const item = value;
+        const override = {};
+        const name = cleanOptionalText(item.name);
+        const description = cleanOptionalText(item.description);
+        const sourcePrompt = cleanOptionalText(item.sourcePrompt);
+        const updatedAt = cleanOptionalText(item.updatedAt);
+        const updatedBy = cleanOptionalText(item.updatedBy);
+        if (name)
+            override.name = name;
+        if (description)
+            override.description = description;
+        if (item.generated === true)
+            override.generated = true;
+        if (sourcePrompt)
+            override.sourcePrompt = sourcePrompt;
+        if (updatedAt)
+            override.updatedAt = updatedAt;
+        if (updatedBy)
+            override.updatedBy = updatedBy;
+        if (Object.keys(override).length > 0)
+            apps[id.trim()] = override;
+    }
+    return { apps };
+}
+export async function readWorkspaceAppMetadataSettings() {
+    const key = workspaceAppMetadataSettingsKey();
+    if (!key)
+        return { apps: {} };
+    try {
+        const { getSetting } = await import("../settings/index.js");
+        return parseWorkspaceAppMetadataSettings(await getSetting(key));
+    }
+    catch {
+        return { apps: {} };
+    }
+}
+export async function writeWorkspaceAppMetadataOverride(input) {
+    const key = workspaceAppMetadataSettingsKey();
+    if (!key)
+        throw new Error("no authenticated user");
+    const appId = input.appId.trim();
+    if (!appId)
+        throw new Error("appId is required");
+    const { getSetting, putSetting } = await import("../settings/index.js");
+    const current = parseWorkspaceAppMetadataSettings(await getSetting(key));
+    const existing = current.apps[appId] ?? {};
+    const next = {
+        ...existing,
+        updatedAt: new Date().toISOString(),
+    };
+    const name = cleanOptionalText(input.name);
+    const description = cleanOptionalText(input.description);
+    const sourcePrompt = cleanOptionalText(input.sourcePrompt);
+    const updatedBy = cleanOptionalText(input.updatedBy);
+    if (name)
+        next.name = name;
+    else
+        delete next.name;
+    if (description)
+        next.description = description;
+    else
+        delete next.description;
+    if (input.generated === true)
+        next.generated = true;
+    else if (input.generated === false)
+        delete next.generated;
+    if (sourcePrompt)
+        next.sourcePrompt = sourcePrompt;
+    if (updatedBy)
+        next.updatedBy = updatedBy;
+    current.apps[appId] = next;
+    await putSetting(key, current);
+    return current;
+}
+export function applyWorkspaceAppMetadataOverride(app, settings) {
+    const override = settings.apps[app.id];
+    if (!override)
+        return app;
+    const name = cleanOptionalText(override.name);
+    const description = cleanOptionalText(override.description);
+    const generated = override.generated === true;
+    const shouldApplyName = !!name && !generated;
+    const shouldApplyDescription = !!description && (!generated || !cleanOptionalText(app.description));
+    if (!shouldApplyName && !shouldApplyDescription)
+        return app;
+    return {
+        ...app,
+        ...(shouldApplyName ? { name } : {}),
+        ...(shouldApplyDescription ? { description } : {}),
+    };
+}
 /**
  * Resolve the workspace app manifest from the same fallback chain that
  * `discoverWorkspaceAgents` uses: `AGENT_NATIVE_WORKSPACE_APPS_JSON` env →
@@ -123,7 +242,7 @@ export async function discoverAgents(selfAppId) {
     }
     // Overlay sibling workspace apps last so same-origin workspaces prefer the
     // app mounted in this workspace over the public template with the same id.
-    for (const agent of discoverWorkspaceAgents(selfAppId)) {
+    for (const agent of await discoverWorkspaceAgents(selfAppId)) {
         agentsById.set(agent.id, agent);
     }
     return Array.from(agentsById.values());
@@ -203,6 +322,11 @@ function parseWorkspaceAppsManifest(parsed) {
             isDispatch: typeof entry.isDispatch === "boolean"
                 ? entry.isDispatch
                 : id === "dispatch",
+            audience: entry.audience === undefined
+                ? DEFAULT_WORKSPACE_APP_AUDIENCE
+                : normalizeWorkspaceAppAudience(entry.audience),
+            publicPaths: normalizeWorkspaceAppPathList(entry.publicPaths),
+            protectedPaths: normalizeWorkspaceAppPathList(entry.protectedPaths),
         };
     })
         .filter((app) => !!app)
@@ -269,12 +393,17 @@ function readWorkspaceAppsFromFilesystem() {
         const pkg = readJson(path.join(appDir, "package.json"));
         if (!pkg)
             return null;
+        const routeAccess = workspaceAppRouteAccessFromPackageJson(pkg);
         return {
             id: entry.name,
             name: pkg.displayName || titleCase(entry.name),
             description: pkg.description || "",
             path: `/${entry.name}`,
             isDispatch: entry.name === "dispatch",
+            audience: workspaceAppAudienceFromPackageJson(pkg) ??
+                DEFAULT_WORKSPACE_APP_AUDIENCE,
+            publicPaths: routeAccess.publicPaths ?? [],
+            protectedPaths: routeAccess.protectedPaths ?? [],
         };
     })
         .filter((app) => !!app)
@@ -308,23 +437,25 @@ function workspaceAppUrl(app) {
         return null;
     }
 }
-function discoverWorkspaceAgents(selfAppId) {
+async function discoverWorkspaceAgents(selfAppId) {
     const workspaceApps = loadWorkspaceAppsManifest();
     if (!workspaceApps)
         return [];
+    const metadataSettings = await readWorkspaceAppMetadataSettings();
     return workspaceApps
         .filter((app) => app.id !== selfAppId)
         .map((app) => {
-        const url = workspaceAppUrl(app);
+        const withOverride = applyWorkspaceAppMetadataOverride(app, metadataSettings);
+        const url = workspaceAppUrl(withOverride);
         if (!url)
             return null;
-        const builtin = BUILTIN_AGENTS.find((agent) => agent.id === app.id);
+        const builtin = BUILTIN_AGENTS.find((agent) => agent.id === withOverride.id);
         return {
-            id: app.id,
-            name: app.name,
-            description: app.description ||
+            id: withOverride.id,
+            name: withOverride.name,
+            description: withOverride.description ||
                 builtin?.description ||
-                `Workspace app mounted at ${app.path}`,
+                `Workspace app mounted at ${withOverride.path}`,
             url,
             color: builtin?.color || "#6B7280",
         };

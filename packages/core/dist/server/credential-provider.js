@@ -17,6 +17,7 @@
  * shape is meant to grow to cover future managed credential integrations
  * (e.g. additional Builder-hosted services) without rewrites.
  */
+import { createHash } from "node:crypto";
 import { getRequestUserEmail, getRequestOrgId } from "./request-context.js";
 import { isLocalDatabase } from "../db/client.js";
 /**
@@ -70,6 +71,34 @@ export function canUseDeployCredentialFallbackForRequest() {
     if (!email)
         return true;
     return isDeployCredentialFallbackAllowed();
+}
+const BUILDER_CREDENTIAL_KEYS = [
+    "BUILDER_PRIVATE_KEY",
+    "BUILDER_PUBLIC_KEY",
+    "BUILDER_USER_ID",
+    "BUILDER_ORG_NAME",
+    "BUILDER_ORG_KIND",
+];
+function isBuilderCredentialKey(key) {
+    return BUILDER_CREDENTIAL_KEYS.includes(key);
+}
+function isHostedWorkspaceRuntime() {
+    const hasFusionPreview = Boolean(process.env.FUSION_ENVIRONMENT ||
+        process.env.FUSION_ENV_ORIGIN ||
+        process.env.VITE_FUSION_ENV_ORIGIN);
+    return (/^(1|true)$/i.test(process.env.AGENT_NATIVE_WORKSPACE ?? "") ||
+        /^(1|true)$/i.test(process.env.VITE_AGENT_NATIVE_WORKSPACE ?? "") ||
+        hasFusionPreview);
+}
+function canUseBuilderDeployCredentialFallbackForRequest() {
+    const email = getRequestUserEmail();
+    // Builder workspace previews can run with NODE_ENV=development and their DB
+    // detection can look local during early startup. Once a real signed-in user
+    // is present, hosted workspace flags are enough to make deployment-level
+    // Builder keys unsafe as an identity fallback.
+    if (email && isHostedWorkspaceRuntime())
+        return false;
+    return canUseDeployCredentialFallbackForRequest();
 }
 async function resolveScopedBuilderCredential(key) {
     const email = getRequestUserEmail();
@@ -156,7 +185,7 @@ export async function resolveBuilderCredential(key) {
     const scoped = await resolveScopedBuilderCredential(key);
     if (scoped)
         return scoped.value;
-    if (!canUseDeployCredentialFallbackForRequest())
+    if (!canUseBuilderDeployCredentialFallbackForRequest())
         return null;
     return readDeployCredentialEnv(key) ?? null;
 }
@@ -197,7 +226,7 @@ export async function resolveBuilderCredentialSource() {
     const scoped = await resolveScopedBuilderCredential("BUILDER_PRIVATE_KEY");
     if (scoped)
         return scoped.source;
-    return canUseDeployCredentialFallbackForRequest() &&
+    return canUseBuilderDeployCredentialFallbackForRequest() &&
         process.env.BUILDER_PRIVATE_KEY
         ? "env"
         : null;
@@ -216,13 +245,79 @@ export async function resolveBuilderCredentials() {
     ]);
     return { privateKey, publicKey, userId, orgName, orgKind };
 }
-const BUILDER_CREDENTIAL_KEYS = [
-    "BUILDER_PRIVATE_KEY",
-    "BUILDER_PUBLIC_KEY",
-    "BUILDER_USER_ID",
-    "BUILDER_ORG_NAME",
-    "BUILDER_ORG_KIND",
-];
+const BUILDER_AUTH_FAILURE_SETTING_PREFIX = "builder-auth-failure:";
+export function builderCredentialFingerprint(privateKey, publicKey) {
+    if (!privateKey || !publicKey)
+        return null;
+    return createHash("sha256")
+        .update(privateKey)
+        .update("\0")
+        .update(publicKey)
+        .digest("hex")
+        .slice(0, 24);
+}
+function builderAuthFailureSettingKey(fingerprint) {
+    return `${BUILDER_AUTH_FAILURE_SETTING_PREFIX}${fingerprint}`;
+}
+export async function getBuilderCredentialAuthFailure(creds = {}) {
+    const fingerprint = builderCredentialFingerprint(creds.privateKey, creds.publicKey);
+    if (!fingerprint)
+        return null;
+    try {
+        const { getSetting } = await import("../settings/store.js");
+        const row = await getSetting(builderAuthFailureSettingKey(fingerprint));
+        if (!row)
+            return null;
+        return {
+            fingerprint,
+            message: typeof row.message === "string" && row.message
+                ? row.message
+                : "Builder rejected the connected credentials. Reconnect Builder.io.",
+            status: typeof row.status === "number" ? row.status : undefined,
+            code: typeof row.code === "string" ? row.code : undefined,
+            at: typeof row.at === "number" ? row.at : Date.now(),
+            ownerEmail: typeof row.ownerEmail === "string" ? row.ownerEmail : undefined,
+            orgId: typeof row.orgId === "string" ? row.orgId : undefined,
+        };
+    }
+    catch {
+        return null;
+    }
+}
+export async function recordBuilderCredentialAuthFailure(details) {
+    try {
+        const creds = await resolveBuilderCredentials();
+        const fingerprint = builderCredentialFingerprint(creds.privateKey, creds.publicKey);
+        if (!fingerprint)
+            return;
+        const { putSetting } = await import("../settings/store.js");
+        await putSetting(builderAuthFailureSettingKey(fingerprint), {
+            fingerprint,
+            message: details?.message ||
+                "Builder rejected the connected credentials. Reconnect Builder.io.",
+            ...(typeof details?.status === "number" && { status: details.status }),
+            ...(details?.code && { code: details.code }),
+            at: Date.now(),
+            ownerEmail: getRequestUserEmail() ?? null,
+            orgId: getRequestOrgId() ?? null,
+        });
+    }
+    catch {
+        // Best-effort marker only; the chat error is still returned to the user.
+    }
+}
+export async function clearBuilderCredentialAuthFailure(creds) {
+    const fingerprint = builderCredentialFingerprint(creds.privateKey, creds.publicKey);
+    if (!fingerprint)
+        return;
+    try {
+        const { deleteSetting } = await import("../settings/store.js");
+        await deleteSetting(builderAuthFailureSettingKey(fingerprint));
+    }
+    catch {
+        // A stale failure marker should not block writing fresh credentials.
+    }
+}
 /**
  * Write Builder credentials to `app_secrets`.
  *
@@ -286,6 +381,10 @@ export async function writeBuilderCredentials(email, creds, options) {
         scope: target.scope,
         scopeId: target.scopeId,
     })));
+    await clearBuilderCredentialAuthFailure({
+        privateKey: creds.privateKey,
+        publicKey: creds.publicKey,
+    });
     return target;
 }
 /**
@@ -401,7 +500,9 @@ export async function resolveSecret(key) {
         // The deploy-level value would silently impersonate the actual key
         // owner across every tenant. Local/single-tenant deployments keep the
         // original env fallback for BYO-server workflows.
-        const envFallback = canUseDeployCredentialFallbackForRequest()
+        const envFallback = (isBuilderCredentialKey(key)
+            ? canUseBuilderDeployCredentialFallbackForRequest()
+            : canUseDeployCredentialFallbackForRequest())
             ? process.env[key] || null
             : null;
         if (traceLookup) {
@@ -436,13 +537,11 @@ export function getBuilderProxyOrigin() {
     return (process.env.BUILDER_PROXY_ORIGIN ||
         process.env.AIR_HOST ||
         process.env.BUILDER_API_HOST ||
-        "https://ai-services.builder.io");
+        "https://api.builder.io");
 }
 /**
- * Base URL for the public Builder LLM gateway (distinct from the internal
- * proxy origin above — the public gateway lives at
- * api.builder.io/agent-native/gateway, while the internal origin is
- * ai-services.builder.io).
+ * Base URL for the public Builder LLM gateway, which lives at
+ * api.builder.io/agent-native/gateway.
  * Override via BUILDER_GATEWAY_BASE_URL for staging / testing.
  */
 export function getBuilderGatewayBaseUrl() {

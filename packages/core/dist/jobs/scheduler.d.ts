@@ -19,10 +19,12 @@ export declare function buildJobContent(meta: JobFrontmatter, body: string): str
 export interface SchedulerDeps {
     getActions: () => Record<string, ActionEntry>;
     getSystemPrompt: (owner: string) => Promise<string>;
-    /** Optional engine override. Defaults to AnthropicEngine using apiKey or ANTHROPIC_API_KEY. */
+    /** Optional engine override. Defaults to the resolved request engine. */
     engine?: AgentEngine;
     apiKey?: string;
-    model: string;
+    model?: string;
+    /** App/template id used for org-scoped per-app model defaults. */
+    appId?: string;
 }
 /**
  * Process all due recurring jobs. Called every 60 seconds.

@@ -1,3 +1,4 @@
+import { type ExtensionChangeTarget } from "./change-marker.js";
 export declare function ensureExtensionsTables(): Promise<void>;
 export declare function registerExtensionsShareable(): void;
 export interface ExtensionRow {
@@ -12,6 +13,8 @@ export interface ExtensionRow {
     orgId: string | null;
     visibility: "private" | "org" | "public";
 }
+export declare function getExtensionChangeTargets(id: string): Promise<ExtensionChangeTarget[]>;
+export declare function notifyExtensionChangeForResource(id: string, beforeTargets?: ExtensionChangeTarget[]): Promise<void>;
 export interface ListExtensionsOptions {
     includeHidden?: boolean;
 }

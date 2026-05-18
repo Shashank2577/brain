@@ -23,6 +23,12 @@ export interface ChatThreadData {
     updatedAt: number;
     scope: ChatThreadScope | null;
 }
+export interface ChatThreadSnapshot {
+    threadData: string;
+    title: string;
+    preview: string;
+    messageCount: number;
+}
 export declare function useChatThreads(apiUrl?: string, storageKey?: string, scope?: ChatThreadScope | null): {
     threads: ChatThreadSummary[];
     activeThreadId: string;
@@ -31,7 +37,7 @@ export declare function useChatThreads(apiUrl?: string, storageKey?: string, sco
     switchThread: (id: string) => void;
     deleteThread: (id: string) => Promise<void>;
     detachThread: (threadId: string) => Promise<void>;
-    forkThread: (sourceId: string) => Promise<string | null>;
+    forkThread: (sourceId: string, sourceSnapshot?: ChatThreadSnapshot | null) => Promise<string | null>;
     saveThreadData: (id: string, data: {
         threadData: string;
         title: string;

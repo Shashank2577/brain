@@ -10,6 +10,17 @@ export declare const BUILDER_CALLBACK_PATH = "/_agent-native/builder/callback";
  */
 export declare const BUILDER_STATE_PARAM = "_an_state";
 export declare const BUILDER_CONNECT_PARAM = "_an_connect";
+export declare const BUILDER_CONNECT_OWNER_COOKIE = "an_builder_connect_owner";
+export declare const BUILDER_SIGNUP_SOURCE_PARAM = "signupSource";
+export declare const BUILDER_AGENT_NATIVE_FLOW_PARAM = "agentNativeFlow";
+export declare const BUILDER_AGENT_NATIVE_CONNECT_SOURCE_PARAM = "agentNativeConnectSource";
+export interface BuilderConnectTrackingParams {
+    signupSource?: string;
+    agentNativeFlow?: string;
+    agentNativeConnectSource?: string;
+}
+export declare function getBuilderConnectTrackingParams(params: URLSearchParams): BuilderConnectTrackingParams;
+export declare function builderConnectTrackingProperties(tracking: BuilderConnectTrackingParams): Record<string, string>;
 export interface BuilderBrowserStatus {
     configured: boolean;
     builderEnabled: boolean;
@@ -21,9 +32,29 @@ export interface BuilderBrowserStatus {
      * account, which takes precedence for their request.
      */
     envManaged: boolean;
-    credentialSource?: "user" | "org" | "env";
+    credentialSource?: "user" | "org" | "workspace" | "env";
+    /**
+     * The currently effective Builder credential was rejected by Builder's API.
+     * This is durable status about the credential pair, not a failure of an
+     * in-progress cli-auth callback.
+     */
+    authError?: {
+        message: string;
+        at: number;
+    };
+    connectError?: {
+        message: string;
+        at: number;
+    };
     appHost: string;
     apiHost: string;
+    /**
+     * Ready-to-open Builder CLI auth URL for this request owner, when the
+     * callback can return to the same deployment that minted the state. Preview
+     * deployments that must callback through a gateway omit this and use
+     * connectUrl so the server can write a pending-connect row first.
+     */
+    cliAuthUrl?: string;
     connectUrl: string;
     publicKeyConfigured: boolean;
     privateKeyConfigured: boolean;
@@ -56,8 +87,10 @@ export declare function signBuilderCallbackState(sessionEmail: string): string;
  * false on any malformed, forged, expired, or cross-session token.
  */
 export declare function verifyBuilderCallbackState(token: string | null | undefined, sessionEmail: string): boolean;
+export declare function verifyBuilderCallbackStateAndGetOwner(token: string | null | undefined): string | null;
 export declare function signBuilderConnectToken(ownerEmail: string): string;
 export declare function verifyBuilderConnectToken(token: string | null | undefined, ownerEmail: string): boolean;
+export declare function verifyBuilderConnectTokenAndGetOwner(token: string | null | undefined): string | null;
 export declare function appendBuilderConnectToken(connectUrl: string, ownerEmail: string): string;
 export declare function getBuilderAppHost(): string;
 export declare function getBuilderApiHost(): string;
@@ -66,6 +99,18 @@ export declare function isBuilderBranchingEnabled(): boolean;
 export declare function resolveBuilderBranchProjectId(): Promise<string>;
 export declare function resolveIsBuilderBranchingEnabled(): Promise<boolean>;
 /**
+ * Query param on the callback URL that carries the original preview opener
+ * origin when cli-auth's allow-list forces `preview_url` to the gateway.
+ * Read on the callback to derive the correct postMessage targetOrigin.
+ *
+ * Not signed: the receive-side trust check in `useBuilderStatus` still
+ * gates messages by allow-listed origin. The worst an attacker could do by
+ * crafting a different `_an_opener` value is target a postMessage to an
+ * origin that doesn't match the actual opener — postMessage drops the
+ * message in that case, identical to the legacy wildcard-fallback path.
+ */
+export declare const BUILDER_OPENER_PARAM = "_an_opener";
+/**
  * Build the Builder cli-auth URL for the connect popup. When a signed
  * `state` token is supplied it is embedded inside the `redirect_url`
  * query string so it survives Builder's redirect verbatim — Builder
@@ -73,12 +118,14 @@ export declare function resolveIsBuilderBranchingEnabled(): Promise<boolean>;
  * api-key / etc., so we don't depend on Builder echoing a top-level
  * `state` parameter (it doesn't).
  *
- * The user-facing connect entry point is `/_agent-native/builder/connect`
- * (a server-side 302). Status / chat-card responses surface that path
- * rather than the cli-auth URL directly, so the 302 handler can mint a
- * fresh state bound to the current session on every click.
+ * Status responses can surface this URL directly; the legacy
+ * `/_agent-native/builder/connect` trampoline still calls this helper for
+ * clients that only know the app-local connect URL.
  */
-export declare function buildBuilderCliAuthUrl(origin: string, state?: string | null): string;
+export declare function buildBuilderCliAuthUrl(callbackOrigin: string, state?: string | null, options?: {
+    previewOrigin?: string;
+    tracking?: BuilderConnectTrackingParams;
+}): string;
 /**
  * The bare URL surfaced to clients as `connectUrl`. The status route appends
  * a short-lived signed connect token when it knows the current owner; this
@@ -86,6 +133,21 @@ export declare function buildBuilderCliAuthUrl(origin: string, state?: string | 
  * request-bound owner and the connect route can fall back to Fetch Metadata.
  */
 export declare function getBuilderBrowserConnectUrl(origin: string): string;
+/**
+ * User-visible Builder connect origin. In Builder/Fusion previews, keep the
+ * connect URL on the actual app preview origin so clicking Connect happens in
+ * the same deployment that minted the signed connect token.
+ */
+export declare function getBuilderBrowserOriginForEvent(event: H3Event): string;
+/**
+ * Builder's /cli-auth page currently only accepts localhost, *.builder.io,
+ * *.agent-native.com, or builder: redirect_url destinations. Preview hosts
+ * such as *.builderio.xyz and *.builder.codes are valid app origins for us,
+ * but Builder rejects them and falls back to http://localhost:10110/auth.
+ * Use a configured public gateway for the callback in those cases while
+ * leaving the surfaced connect URL on the user's active preview.
+ */
+export declare function getBuilderCliAuthCallbackOriginForEvent(event: H3Event): string;
 export declare function getBuilderBrowserStatus(origin: string): BuilderBrowserStatus;
 export declare function getBuilderBrowserStatusForEvent(event: H3Event): BuilderBrowserStatus;
 /**
@@ -108,7 +170,9 @@ export declare function getBuilderCallbackEnvVars(params: {
     value: string;
 }[];
 export declare function resolveSafePreviewUrl(previewUrl: string | null | undefined, event: H3Event): string;
-export declare function createBuilderBrowserCallbackPage(previewUrl: string): string;
+export declare function createBuilderBrowserCallbackPage(previewUrl: string, opts?: {
+    parentOrigin?: string;
+}): string;
 /**
  * HTML page rendered inside the OAuth popup when the callback handler caught
  * an error persisting the per-user Builder credentials. Without this, the
@@ -123,7 +187,12 @@ export declare function createBuilderBrowserCallbackPage(previewUrl: string): st
  *    polling stops immediately rather than waiting for the next /status
  *    poll to surface the SQL `builder-connect-error:<email>` row.
  */
-export declare function createBuilderBrowserCallbackErrorPage(message: string): string;
+export declare function createBuilderBrowserCallbackErrorPage(message: string, opts?: {
+    title?: string;
+    body?: string;
+    closeHint?: string;
+    parentOrigin?: string;
+}): string;
 export interface RunBuilderAgentArgs {
     prompt: string;
     projectId?: string;

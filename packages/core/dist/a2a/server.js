@@ -159,19 +159,7 @@ export function mountA2A(nitroApp, config, routePrefix = "/_agent-native") {
             (event.url?.protocol?.replace(":", "") ?? "http");
         const host = getRequestHeader(event, "host") ?? "localhost";
         const baseUrl = `${protocol}://${host}`;
-        // Filter out per-user/per-org MCP tools to avoid tenant disclosure.
-        // Note: stdio MCP tools loaded from a file-based mcp.config.json are
-        // process-wide and don't carry a per-user/per-org prefix, so they
-        // remain visible. That's intentional — they're an operator-controlled
-        // capability list.
-        const filteredSkills = (config.skills ?? []).filter((skill) => {
-            const id = skill.id ??
-                skill.name ??
-                "";
-            if (typeof id !== "string")
-                return true;
-            return !id.startsWith("mcp__user_") && !id.startsWith("mcp__org_");
-        });
+        const filteredSkills = filterPublicAgentCardSkills(config);
         return generateAgentCard({ ...config, skills: filteredSkills }, baseUrl, `${routePrefix}/a2a`);
     }));
     // Async-mode processor route. MUST be mounted BEFORE the `/a2a` catch-all
@@ -339,5 +327,29 @@ export function mountA2A(nitroApp, config, routePrefix = "/_agent-native") {
         const body = await readBody(event);
         return handleJsonRpcH3(body, event, config);
     }));
+}
+export function filterPublicAgentCardSkills(config) {
+    return (config.skills ?? []).filter((skill) => {
+        const id = skill.id ??
+            skill.name ??
+            "";
+        if (typeof id === "string") {
+            if (id.startsWith("mcp__user_") || id.startsWith("mcp__org_")) {
+                return false;
+            }
+        }
+        if (skill.public === false || skill.requiresAuth || skill.isConsequential) {
+            return false;
+        }
+        if (!config.publicSkillsOnly)
+            return true;
+        if (skill.publicAgent) {
+            return (skill.publicAgent.expose === true &&
+                skill.publicAgent.readOnly === true &&
+                skill.publicAgent.requiresAuth !== true &&
+                skill.publicAgent.isConsequential !== true);
+        }
+        return skill.public === true && skill.readOnly !== false;
+    });
 }
 //# sourceMappingURL=server.js.map

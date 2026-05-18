@@ -297,7 +297,7 @@ export declare const extensionShares: import("drizzle-orm/sqlite-core").SQLiteTa
             tableName: string;
             dataType: "string";
             columnType: "SQLiteText";
-            data: "viewer" | "editor" | "admin";
+            data: "admin" | "viewer" | "editor";
             driverParam: string;
             notNull: true;
             hasDefault: true;
@@ -663,6 +663,7 @@ export declare const EXTENSION_DATA_DROP_OLD_INDEX_SQL = "DROP INDEX IF EXISTS t
 export declare const EXTENSION_DATA_DROP_OLD_INDEX_SQL_PG = "DROP INDEX IF EXISTS tool_data_scope_item_idx";
 export declare const EXTENSIONS_OWNER_INDEX_SQL = "CREATE INDEX IF NOT EXISTS tools_owner_idx ON tools (owner_email)";
 export declare const EXTENSIONS_ORG_INDEX_SQL = "CREATE INDEX IF NOT EXISTS tools_org_idx ON tools (org_id)";
+export declare const EXTENSIONS_UPDATED_INDEX_SQL = "CREATE INDEX IF NOT EXISTS tools_updated_at_idx ON tools (updated_at)";
 export declare const EXTENSION_SHARES_RESOURCE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS tool_shares_resource_idx ON tool_shares (resource_id)";
 export declare const EXTENSION_HIDES_CREATE_SQL = "CREATE TABLE IF NOT EXISTS tool_hidden_extensions (\n  id TEXT PRIMARY KEY,\n  tool_id TEXT NOT NULL,\n  owner_email TEXT NOT NULL,\n  created_at TEXT NOT NULL DEFAULT (datetime('now'))\n)";
 export declare const EXTENSION_HIDES_CREATE_SQL_PG = "CREATE TABLE IF NOT EXISTS tool_hidden_extensions (\n  id TEXT PRIMARY KEY,\n  tool_id TEXT NOT NULL,\n  owner_email TEXT NOT NULL,\n  created_at TEXT NOT NULL DEFAULT now()\n)";

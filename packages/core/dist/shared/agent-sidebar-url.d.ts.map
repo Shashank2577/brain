@@ -1,0 +1,1 @@
+{"version":3,"file":"agent-sidebar-url.d.ts","sourceRoot":"","sources":["../../src/shared/agent-sidebar-url.ts"],"names":[],"mappings":"AAAA,eAAO,MAAM,sBAAsB,wBAAwB,CAAC;AAC5D,eAAO,MAAM,yBAAyB,iBAAiB,CAAC;AACxD,eAAO,MAAM,gCAAgC,WAAW,CAAC;AAQzD,wBAAgB,yBAAyB,CAAC,SAAS,EAAE,MAAM,GAAG,OAAO,CAWpE;AAED,wBAAgB,8BAA8B,CAAC,SAAS,EAAE,MAAM,GAAG,MAAM,CAexE"}

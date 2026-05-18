@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { defineEventHandler, getMethod, getQuery, getRequestIP, sendRedirect, setResponseHeader, setResponseStatus, getCookie, setCookie, deleteCookie, getHeader, } from "h3";
+import { defineEventHandler, getMethod, getQuery, getRequestIP, setResponseHeader, setResponseStatus, getCookie, setCookie, deleteCookie, getHeader, } from "h3";
 // In h3 v2, `event.req` IS the web Request — but in Nitro's dev server (srvx
 // runtime), event.url and event.req share the same underlying URL object.
 // When registerMiddleware strips the mount prefix from event.url.pathname, it
@@ -45,6 +45,12 @@ import { safeOAuthReturnUrl } from "./oauth-return-url.js";
 import { captureAuthError } from "./sentry.js";
 import { extractOAuthStateAppId } from "../shared/oauth-state.js";
 import { isValidWorkspaceAppIdFormat } from "../shared/workspace-app-id.js";
+import { normalizeWorkspaceAppAudience, workspaceAppAudienceFromEnv, workspaceAppRouteAccessFromEnv, } from "../shared/workspace-app-audience.js";
+import { BUILDER_CONNECT_OWNER_COOKIE, BUILDER_CONNECT_PARAM, BUILDER_STATE_PARAM, verifyBuilderCallbackStateAndGetOwner, verifyBuilderConnectTokenAndGetOwner, } from "./builder-browser.js";
+// Pure env-read feature switch from a leaf module (no dependency back on
+// auth.ts), so the guard and the SSO route handler share one validator and
+// can never disagree about whether federated SSO is enabled.
+import { isIdentitySsoEnabled } from "./identity-sso-store.js";
 /**
  * Get the configured session max age. Desktop SSO broker writes from
  * OAuth flows read this so expiration stays consistent with the cookie.
@@ -116,6 +122,72 @@ export const COOKIE_NAME = HAS_COOKIE_DOMAIN
 export function cookieDomainAttrs() {
     const domain = getCookieDomain();
     return domain ? { domain } : {};
+}
+function getCookieValues(event, name) {
+    const values = [];
+    const raw = getHeader(event, "cookie");
+    if (raw) {
+        for (const part of String(raw).split(";")) {
+            const trimmed = part.trim();
+            if (!trimmed)
+                continue;
+            const eq = trimmed.indexOf("=");
+            if (eq <= 0)
+                continue;
+            if (trimmed.slice(0, eq).trim() !== name)
+                continue;
+            let value = trimmed.slice(eq + 1).trim();
+            if (value.startsWith('"') && value.endsWith('"')) {
+                value = value.slice(1, -1);
+            }
+            try {
+                value = decodeURIComponent(value);
+            }
+            catch {
+                // Keep the raw cookie value if it was not percent-encoded.
+            }
+            if (value && !values.includes(value))
+                values.push(value);
+        }
+    }
+    // H3's cookie parser keeps only the first duplicate name. Preserve it as a
+    // fallback for mock/runtime shapes that do not expose the raw Cookie header.
+    const parsed = getCookie(event, name);
+    if (parsed && !values.includes(parsed))
+        values.push(parsed);
+    return values;
+}
+function getFrameworkSessionCookieValues(event) {
+    return getCookieValues(event, COOKIE_NAME);
+}
+function frameworkSessionCookieNamesToClear() {
+    const names = new Set([COOKIE_NAME]);
+    if (APP_NAME_SLUG)
+        names.add(`an_session_${APP_NAME_SLUG}`);
+    return [...names];
+}
+function deleteCookieFromEveryScope(event, name) {
+    // Clear host-only cookies first. When COOKIE_DOMAIN was introduced, stale
+    // host-only `an_session` cookies could shadow the new domain cookie because
+    // browsers send older same-path duplicates first.
+    deleteCookie(event, name, { path: "/" });
+    const domainAttrs = cookieDomainAttrs();
+    if (domainAttrs.domain) {
+        deleteCookie(event, name, { path: "/", ...domainAttrs });
+    }
+}
+function clearFrameworkSessionCookies(event) {
+    for (const name of frameworkSessionCookieNamesToClear()) {
+        deleteCookieFromEveryScope(event, name);
+    }
+}
+async function getLegacyCookieSession(event) {
+    for (const cookie of getFrameworkSessionCookieValues(event)) {
+        const email = await getSessionEmail(cookie);
+        if (email)
+            return { email, token: cookie };
+    }
+    return null;
 }
 function getOAuthStateAppId() {
     const raw = process.env.APP_NAME || process.env.npm_package_name;
@@ -226,6 +298,63 @@ export function safeReturnPath(raw) {
     }
 }
 /**
+ * Return the configured login HTML for this request, or `null` when no auth
+ * guard is installed. Used by the `/_agent-native/open` deep-link route to
+ * serve the same sign-in form the auth guard would — at the original deep
+ * link URL — so the login form's `window.location.replace(href)` success
+ * handler reloads the same URL and the (now authenticated) open route
+ * proceeds. Mirrors the rawPath/getLoginHtml resolution in the auth guard.
+ */
+export function getConfiguredLoginHtml(event) {
+    const config = _authGuardConfig;
+    if (!config)
+        return null;
+    const url = event.node?.req?.url ?? event.path ?? "/";
+    const queryStart = url.indexOf("?");
+    const rawPath = queryStart >= 0 ? url.slice(0, queryStart) : url;
+    return config.getLoginHtml?.(event, rawPath) ?? config.loginHtml ?? null;
+}
+/**
+ * True only when the request originates from the local machine — the raw
+ * socket peer is `127.0.0.0/8`, `::1`, or the IPv4-mapped `::ffff:127.0.0.1`
+ * (an optional IPv6 zone id like `fe80::1%en0` is stripped first).
+ *
+ * `getRequestIP(event)` is called WITHOUT `{ xForwardedFor: true }`, so it
+ * returns the real connection peer and never an attacker-controlled
+ * `X-Forwarded-For` value — a remote client cannot spoof its way past this.
+ * Used to scope local-only conveniences (the desktop SSO broker and the dev
+ * auto-account) so a directly network-reachable dev server never exposes
+ * them to a remote visitor. NOTE: a reverse proxy / tunnel that connects to
+ * the dev server over localhost still appears as loopback, so this is a
+ * necessary but not sufficient gate — callers pair it with NODE_ENV and,
+ * for the dev account, a throwaway per-DB password.
+ */
+export function isLoopbackAddress(ip) {
+    // Strip an optional IPv6 zone id (e.g. "fe80::1%en0") before comparing.
+    const normalised = (ip ?? "").split("%")[0];
+    return (normalised === "127.0.0.1" ||
+        normalised === "::1" ||
+        normalised === "::ffff:127.0.0.1" ||
+        normalised.startsWith("127."));
+}
+/**
+ * True when the request's actual socket peer is loopback. Uses
+ * `getRequestIP(event)` WITHOUT `{ xForwardedFor: true }`, so it reflects the
+ * real connecting IP and a remote client cannot spoof it via the `Host` /
+ * `X-Forwarded-*` headers. Use this — not a parsed `Host`-header origin — for
+ * any "is this local dev?" security gate (MCP/connect dev-open).
+ */
+export function isLoopbackRequest(event) {
+    let ip;
+    try {
+        ip = getRequestIP(event) ?? undefined;
+    }
+    catch {
+        ip = undefined;
+    }
+    return isLoopbackAddress(ip);
+}
+/**
  * Read the desktop-SSO broker file, but only if the request is plausibly
  * from the Electron desktop app *and* coming from the local machine.
  *
@@ -244,21 +373,7 @@ async function readDesktopSsoSafely(event) {
         return null;
     if (!isElectronRequest(event))
         return null;
-    // Loopback-only: 127.0.0.1, ::1, and the IPv4-mapped form.
-    let ip;
-    try {
-        ip = getRequestIP(event) ?? undefined;
-    }
-    catch {
-        ip = undefined;
-    }
-    // Strip an optional zone id (e.g. "fe80::1%en0") before comparing.
-    const normalised = (ip ?? "").split("%")[0];
-    const isLoopback = normalised === "127.0.0.1" ||
-        normalised === "::1" ||
-        normalised === "::ffff:127.0.0.1" ||
-        normalised.startsWith("127.");
-    if (!isLoopback)
+    if (!isLoopbackRequest(event))
         return null;
     return await readDesktopSso();
 }
@@ -367,7 +482,7 @@ const EXPECTED_AUTH_FAILURE_PATTERNS = [
     /already\s+(exists|registered|in\s+use)/i,
     /not\s+verified/i,
 ];
-function isExpectedAuthFailure(error) {
+export function isExpectedAuthFailure(error) {
     const msg = error?.message;
     if (typeof msg !== "string")
         return false;
@@ -478,6 +593,16 @@ export async function getSessionEmail(token) {
 let customGetSession = null;
 let _authGuardConfig = null;
 const _genericGoogleOAuthRoutesEnabled = new WeakMap();
+function resolveWorkspaceAppAudience(options = {}) {
+    return normalizeWorkspaceAppAudience(options.workspaceAppAudience ?? workspaceAppAudienceFromEnv());
+}
+function resolveWorkspaceAppRouteAccess(options = {}) {
+    const env = workspaceAppRouteAccessFromEnv();
+    return {
+        publicPaths: options.workspaceAppPublicPaths ?? env.publicPaths,
+        protectedPaths: options.workspaceAppProtectedPaths ?? env.protectedPaths,
+    };
+}
 function setGenericGoogleOAuthRoutesEnabled(app, enabled) {
     if (app && typeof app === "object") {
         _genericGoogleOAuthRoutesEnabled.set(app, enabled);
@@ -703,6 +828,40 @@ function workspaceOAuthCallbackRelayResponse(event) {
         headers: { Location: `/${appId}${normalizedPath}${search}` },
     });
 }
+function verifiedBuilderConnectOwnerFromUrl(url) {
+    const queryStart = url.indexOf("?");
+    if (queryStart < 0)
+        return null;
+    const token = new URLSearchParams(url.slice(queryStart + 1)).get(BUILDER_CONNECT_PARAM);
+    return verifyBuilderConnectTokenAndGetOwner(token);
+}
+function shouldBypassAuthForBuilderConnect(event, p) {
+    if (p === "/_agent-native/builder/connect") {
+        const url = event.node?.req?.url ?? event.path ?? "/";
+        return Boolean(verifiedBuilderConnectOwnerFromUrl(url));
+    }
+    if (p === "/_agent-native/builder/callback") {
+        const url = event.node?.req?.url ?? event.path ?? "/";
+        const queryStart = url.indexOf("?");
+        const state = queryStart >= 0
+            ? new URLSearchParams(url.slice(queryStart + 1)).get(BUILDER_STATE_PARAM)
+            : null;
+        // The signed `_an_state` only authenticates the popup back to our app
+        // when the redirect chain through Builder dropped the session cookie
+        // (preview hosts, third-party-cookie blockers, etc). It is NOT a
+        // bearer credential that should let *any* request through. We bypass
+        // the auth guard only when no session exists (the legitimate
+        // session-lost popup case) — when a session IS present, the normal
+        // guard runs and the callback handler cross-checks the state owner
+        // against the session.
+        const hasSession = Boolean(getCookie(event, COOKIE_NAME));
+        if (hasSession)
+            return false;
+        return Boolean(verifyBuilderCallbackStateAndGetOwner(state) ||
+            verifyBuilderConnectTokenAndGetOwner(getCookie(event, BUILDER_CONNECT_OWNER_COOKIE)));
+    }
+    return false;
+}
 function createAuthGuardFn() {
     return async (event) => {
         const config = _authGuardConfig;
@@ -739,6 +898,14 @@ function createAuthGuardFn() {
             p === "/_agent-native/google/add-account/callback") {
             return;
         }
+        // The deep-link route resolves the *browser* session itself and serves
+        // the sign-in form inline when unauthenticated (so the post-login reload
+        // returns to the same deep link). It must bypass the guard's blanket
+        // 401-for-/_agent-native/* so an external-agent "Open in … →" link
+        // clicked in any browser/webview lands correctly.
+        if (p === "/_agent-native/open") {
+            return;
+        }
         // Integration webhook endpoints verify authenticity via platform-specific
         // signature verification (Slack HMAC, Telegram token, etc.), not sessions.
         if (/^\/_agent-native\/integrations\/[^/]+\/webhook$/.test(p)) {
@@ -762,6 +929,54 @@ function createAuthGuardFn() {
         // A2A endpoint verifies authenticity via JWT signed with the org's A2A
         // secret (or the global A2A_SECRET fallback), not via session cookies.
         if (p === "/_agent-native/a2a") {
+            return;
+        }
+        // MCP protocol endpoint. `mountMCP` runs its own `verifyAuth` (Bearer
+        // ACCESS_TOKEN/ACCESS_TOKENS or A2A_SECRET JWT, open in dev) and is the
+        // authoritative gate — exactly like A2A above. Without this bypass the
+        // guard's blanket 401-for-/_agent-native/* below shadows that check, so
+        // an external coding agent (Claude Code / Codex / Cowork) connecting via
+        // the stdio proxy or HTTP can never reach it. Exact path only: the MCP
+        // handler returns early for `/_agent-native/mcp/*` management subroutes,
+        // which keep their normal session auth.
+        if (p === "/_agent-native/mcp") {
+            return;
+        }
+        // MCP connect — frictionless external-agent connection. Like /open
+        // above, the connect *page* resolves the browser session itself and
+        // serves its own login form when unauthenticated (so the post-login
+        // reload returns to the same URL, carrying the device user_code in the
+        // query). The two unauthenticated device endpoints below are the CLI's
+        // OAuth-style polling pair: `device/start` (mint a device+user code) and
+        // `device/poll` (exchange an approved code for the token) — both must be
+        // reachable without a browser session because the CLI has none. They are
+        // protected by short-TTL, single-use, crypto-random codes + a creation
+        // rate-limit, not cookies.
+        //
+        // Everything that MINTS or MUTATES on behalf of the user — `/token`,
+        // `/device/authorize`, `/tokens`, `/tokens/revoke` — is intentionally
+        // NOT bypassed: the guard's default 401-for-/_agent-native/* is the
+        // correct gate for them. Those are POSTed by the in-page fetch, which
+        // carries the session cookie, so the guard (which only 401s when there
+        // is no session) lets the authenticated same-origin request through and
+        // the handler then re-checks the session itself (defense in depth).
+        if (p === "/_agent-native/mcp/connect" ||
+            p === "/_agent-native/mcp/connect/device/start" ||
+            p === "/_agent-native/mcp/connect/device/poll") {
+            return;
+        }
+        // Cross-app SSO ("Sign in with Agent-Native") — CLIENT side. Both the
+        // `/login` entry point and the `/callback` (hit by a user who is, by
+        // definition, NOT yet signed in to THIS app) must bypass the blanket
+        // 401-for-/_agent-native/*: they resolve / mint the browser session
+        // themselves and verify a signature-bound, single-use, CSRF-stated
+        // hub token — not a cookie. This bypass is GATED on the opt-in env var
+        // so an unset `AGENT_NATIVE_IDENTITY_HUB_URL` is a true no-op (the
+        // guard's behaviour is byte-for-byte unchanged when SSO is off). The
+        // handler itself 404s when disabled as defence in depth.
+        if (isIdentitySsoEnabled() &&
+            (p === "/_agent-native/identity/login" ||
+                p === "/_agent-native/identity/callback")) {
             return;
         }
         // Internal processor endpoint for the A2A async-mode fanout. Mirrors the
@@ -850,6 +1065,11 @@ function createAuthGuardFn() {
             return;
         if (isPublicPath(normalizedUrl, publicPaths))
             return;
+        if (shouldBypassAuthForBuilderConnect(event, p))
+            return;
+        if (isPublicWorkspacePageRequest(event, p, config)) {
+            return;
+        }
         const session = await getSession(event);
         if (session)
             return;
@@ -858,8 +1078,8 @@ function createAuthGuardFn() {
             return { error: "Unauthorized" };
         }
         // Local-dev convenience: on the first page GET of a freshly-scaffolded
-        // app, transparently create + sign in `dev@local` instead of showing the
-        // sign-up form. Gated on NODE_ENV=development AND no real users in the
+        // app, transparently create + sign in `dev@local.test` instead of
+        // showing the sign-up form. Gated on NODE_ENV=development AND no real users in the
         // DB, so production and any app that has ever had a real signup are
         // unaffected. See maybeAutoCreateDevSession for full conditions.
         if (getMethod(event) === "GET") {
@@ -873,69 +1093,105 @@ function createAuthGuardFn() {
         });
     };
 }
-const AUTO_DEV_ACCOUNT_EMAIL = "dev@local";
-const AUTO_DEV_ACCOUNT_PASSWORD = "local-dev-account";
+// `.test` is an RFC 6761 reserved TLD that never resolves, so this stays a
+// safe local-only address while still passing better-auth's `z.email()`
+// validator (a bare `dev@local` has no TLD and is rejected as INVALID_EMAIL,
+// which silently broke the zero-setup auto-sign-in on every fresh dev DB).
+const AUTO_DEV_ACCOUNT_EMAIL = "dev@local.test";
+// No fixed password: maybeAutoCreateDevSession mints a random one per DB
+// and prints it to the console once (see there).
+// Pre-fix local dev DBs may already contain a `dev@local` user. Treat that
+// legacy address as the dev account too, so the "any real users?" check
+// below doesn't mistake the old auto-account for a real signup (which would
+// permanently disable auto-create) and the post-logout guard still fires.
+const LEGACY_AUTO_DEV_ACCOUNT_EMAIL = "dev@local";
 /**
  * Local-dev convenience: skip the sign-up wall on first run.
  *
  * When NODE_ENV=development AND the `user` table has no rows for any
- * email other than `dev@local`, transparently sign up (or sign back in
+ * email other than the dev account (`dev@local.test`, or the legacy
+ * `dev@local` on pre-fix DBs), transparently sign up (or sign back in
  * to) the auto-managed dev account and return a 302 to the original URL
  * with a session cookie set. A developer who just ran `pnpm dev` lands
  * in the app immediately instead of being asked to fill in name + email
  * + password to try the framework.
  *
- * Auto-create fires exactly once per local DB: as soon as `dev@local`
- * (or any real user) exists in the `user` table, the helper returns
- * null and the normal login flow takes over. Signing out then leaves
- * the user on the regular sign-in form; without this guard the
+ * Auto-create fires exactly once per local DB: as soon as the dev
+ * account (or any real user) exists in the `user` table, the helper
+ * returns null and the normal login flow takes over. Signing out then
+ * leaves the user on the regular sign-in form; without this guard the
  * post-logout reload would silently re-create the session.
  *
- * The fixed password is intentional: it means a developer who signs
- * out can sign back in with `dev@local` / `local-dev-account` from
- * the regular login form. To get the auto-flow back, drop the user
- * row or wipe the local DB. Set
- * `AGENT_NATIVE_DISABLE_AUTO_DEV_ACCOUNT=1` to opt out entirely
- * (useful for tests that exercise the unauthenticated branch). This
- * is local-only — the helper is gated on NODE_ENV.
+ * Hardening (this is a convenience, not an auth bypass — it uses the
+ * real Better Auth sign-up/sign-in, but a known-credential local account
+ * is still worth not shipping):
+ *  - **Loopback only.** Gated on `isLoopbackRequest`, so a tunnelled /
+ *    reverse-proxied / misconfigured-non-prod dev server never auto-signs
+ *    in a directly-remote visitor (mirrors the desktop SSO broker).
+ *  - **Random per-DB password.** The account password is freshly
+ *    generated on creation and printed to the server console exactly
+ *    once — there is no source-code-known credential. After logout the
+ *    auto-flow won't refire (dev row exists), so signing back in uses
+ *    that printed password; lost it ⇒ drop the row or wipe the local DB.
+ *  - **NODE_ENV.** Still gated on development/test.
+ *
+ * Set `AGENT_NATIVE_DISABLE_AUTO_DEV_ACCOUNT=1` to opt out entirely
+ * (useful for tests that exercise the unauthenticated branch).
  */
 async function maybeAutoCreateDevSession(event, redirectTo) {
     if (!isDevEnvironment())
         return null;
     if (process.env.AGENT_NATIVE_DISABLE_AUTO_DEV_ACCOUNT === "1")
         return null;
+    // Local machine only: never auto-sign-in a remote visitor, even if a
+    // dev server is exposed (tunnel, reverse proxy, misconfigured NODE_ENV).
+    if (!isLoopbackRequest(event))
+        return null;
     try {
         const db = getDbExec();
+        // Exclude BOTH the current and the legacy dev-account email so a
+        // pre-fix local DB that still holds a `dev@local` row isn't treated
+        // as having a "real user" (which would permanently disable
+        // auto-create on that DB).
         const { rows: realUsers } = await db.execute({
-            sql: 'SELECT 1 FROM "user" WHERE email != ? LIMIT 1',
-            args: [AUTO_DEV_ACCOUNT_EMAIL],
+            sql: 'SELECT 1 FROM "user" WHERE email NOT IN (?, ?) LIMIT 1',
+            args: [AUTO_DEV_ACCOUNT_EMAIL, LEGACY_AUTO_DEV_ACCOUNT_EMAIL],
         });
         if (realUsers.length > 0)
             return null;
-        // If `dev@local` already exists, this is not a freshly-scaffolded
+        // If the dev account already exists, this is not a freshly-scaffolded
         // app — the user has been through the auto-create flow at least
         // once. Skip auto-create so signing out actually works: without
         // this guard, the post-logout reload immediately re-creates the
-        // session and the user is stuck in dev@local forever (or has to
-        // set AGENT_NATIVE_DISABLE_AUTO_DEV_ACCOUNT=1). To get the demo
-        // experience back, drop the row or wipe the local DB.
+        // session and the user is stuck in the dev account forever (or has
+        // to set AGENT_NATIVE_DISABLE_AUTO_DEV_ACCOUNT=1). To get the demo
+        // experience back, drop the row or wipe the local DB. The legacy
+        // `dev@local` address is matched too so pre-fix DBs still suppress
+        // re-create after logout.
         const { rows: devUsers } = await db.execute({
-            sql: 'SELECT 1 FROM "user" WHERE email = ? LIMIT 1',
-            args: [AUTO_DEV_ACCOUNT_EMAIL],
+            sql: 'SELECT 1 FROM "user" WHERE email IN (?, ?) LIMIT 1',
+            args: [AUTO_DEV_ACCOUNT_EMAIL, LEGACY_AUTO_DEV_ACCOUNT_EMAIL],
         });
         if (devUsers.length > 0)
             return null;
         const auth = await getBetterAuth();
         if (!auth)
             return null;
-        // Idempotent sign-up: succeeds on first run, throws an "already exists"
-        // failure on subsequent runs (which we swallow before falling through
-        // to the sign-in path below).
+        // Random per-DB password — there is no source-code-known credential
+        // for this account. Printed once below so the developer can sign back
+        // in after logout (the auto-flow won't refire while the dev row
+        // exists).
+        const devPassword = crypto.randomBytes(18).toString("base64url");
+        // The dev account does not exist at this point (the devUsers check
+        // above returned early otherwise). The "already exists" swallow only
+        // matters under a rare concurrent first-hit race — in that case the
+        // sign-in below fails the password check and we return null, leaving
+        // the racing request that already won to keep the session.
         try {
             await auth.api.signUpEmail({
                 body: {
                     email: AUTO_DEV_ACCOUNT_EMAIL,
-                    password: AUTO_DEV_ACCOUNT_PASSWORD,
+                    password: devPassword,
                     name: "Dev",
                 },
             });
@@ -947,23 +1203,26 @@ async function maybeAutoCreateDevSession(event, redirectTo) {
         const result = await auth.api.signInEmail({
             body: {
                 email: AUTO_DEV_ACCOUNT_EMAIL,
-                password: AUTO_DEV_ACCOUNT_PASSWORD,
+                password: devPassword,
             },
         });
         if (!result?.token)
             return null;
-        setCookie(event, COOKIE_NAME, result.token, {
-            httpOnly: true,
-            ...crossSiteCookieAttrs(event),
-            ...cookieDomainAttrs(),
-            path: "/",
-            maxAge: sessionMaxAge,
-        });
+        setFrameworkSessionCookie(event, result.token);
         await addSession(result.token, AUTO_DEV_ACCOUNT_EMAIL);
-        return new Response("", {
-            status: 302,
-            headers: { Location: redirectTo },
-        });
+        // Print the throwaway credential exactly once so the developer can
+        // sign back in manually after logout (auto-flow won't refire once the
+        // dev row exists). Local console only — never Sentry.
+        console.log(`\n[agent-native] Local dev auto-login ready.\n` +
+            `  email:    ${AUTO_DEV_ACCOUNT_EMAIL}\n` +
+            `  password: ${devPassword}\n` +
+            `  (random, this DB only — needed to sign back in after logout.\n` +
+            `   Set AGENT_NATIVE_DISABLE_AUTO_DEV_ACCOUNT=1 to disable.)\n`);
+        // Emit the session cookie ON the 302 itself. Returning a bare
+        // `new Response(...)` here drops the cookie staged on event.node.res
+        // (see redirectWithStagedCookies), so the developer would 302 to the
+        // app and immediately bounce back to the login form.
+        return redirectWithStagedCookies(event, redirectTo);
     }
     catch (e) {
         // Local-dev only — log to console for debugging, but don't surface
@@ -1006,12 +1265,9 @@ export async function getSession(event) {
     // 1. ACCESS_TOKEN check (programmatic/agent access)
     const accessTokens = getAccessTokens();
     if (accessTokens.length > 0) {
-        const cookie = getCookie(event, COOKIE_NAME);
-        if (cookie) {
-            const email = await getSessionEmail(cookie);
-            if (email)
-                return { email, token: cookie };
-        }
+        const cookieSession = await getLegacyCookieSession(event);
+        if (cookieSession)
+            return cookieSession;
     }
     // 2. BYOA custom getSession
     if (customGetSession) {
@@ -1053,13 +1309,9 @@ export async function getSession(event) {
             console.error("[auth] ba.api.getSession error:", e);
         }
         // 5. Legacy cookie fallback (for sessions created before migration)
-        const cookie = getCookie(event, COOKIE_NAME);
-        if (cookie) {
-            const email = await getSessionEmail(cookie);
-            if (email) {
-                return { email, token: cookie };
-            }
-        }
+        const cookieSession = await getLegacyCookieSession(event);
+        if (cookieSession)
+            return cookieSession;
         // 6. Desktop SSO broker fallback.
         // Each template in the Electron desktop app has its own database, so
         // a session token created by one template doesn't resolve in another.
@@ -1114,6 +1366,7 @@ function crossSiteCookieAttrs(event) {
         : { sameSite: "lax", secure: false };
 }
 export function setFrameworkSessionCookie(event, token) {
+    clearFrameworkSessionCookies(event);
     setCookie(event, COOKIE_NAME, token, {
         httpOnly: true,
         ...crossSiteCookieAttrs(event),
@@ -1121,6 +1374,33 @@ export function setFrameworkSessionCookie(event, token) {
         path: "/",
         maxAge: sessionMaxAge,
     });
+}
+/**
+ * Build a redirect `Response` that carries whatever `Set-Cookie` headers were
+ * just staged on the event (e.g. by `setFrameworkSessionCookie`).
+ *
+ * h3 v2's `setCookie` appends the cookie onto `event.res.headers`. When a
+ * handler returns a plain object/string, h3's `prepareResponse` merges those
+ * staged headers into the synthesized response, so the cookie survives. But
+ * when a handler returns a web `Response`, `prepareResponse` only merges the
+ * staged headers if the Response is 2xx — its `!val.ok` early-return hands a
+ * non-2xx Response (like a 302) straight back WITHOUT merging. A bare
+ * `new Response("", { status: 302, headers: { Location } })` therefore 302s
+ * the browser with no session cookie, so the zero-setup dev auto-sign-in
+ * bounces straight back to the login form.
+ *
+ * Mirroring the staged cookies onto the redirect Response's own headers makes
+ * them part of the Response that's returned as-is, so the 302 actually
+ * carries the session cookie. (`event.res.headers` is also left intact for
+ * any non-Response continuation path; h3 only skips the merge for the
+ * Response branch, so there's no double-emit.)
+ */
+function redirectWithStagedCookies(event, location, status = 302) {
+    const headers = new Headers({ Location: location });
+    const staged = event.res?.headers?.getSetCookie?.() ?? [];
+    for (const cookie of staged)
+        headers.append("set-cookie", cookie);
+    return new Response("", { status, headers });
 }
 function isHttpsRequest(event) {
     try {
@@ -1146,7 +1426,32 @@ function isHttpsRequest(event) {
 // ---------------------------------------------------------------------------
 function isPublicPath(url, publicPaths) {
     const p = url.split("?")[0];
-    return publicPaths.some((pp) => p === pp || p.startsWith(pp + "/"));
+    return matchesPathList(p, publicPaths);
+}
+function matchesPathList(path, paths) {
+    return paths.some((candidate) => {
+        const normalized = candidate.length > 1 && candidate.endsWith("/")
+            ? candidate.slice(0, -1)
+            : candidate;
+        return path === normalized || path.startsWith(normalized + "/");
+    });
+}
+function isPublicWorkspacePageRequest(event, path, config) {
+    if (!isReadMethod(event))
+        return false;
+    if (path === "/_agent-native" ||
+        path.startsWith("/_agent-native/") ||
+        path === "/api" ||
+        path.startsWith("/api/") ||
+        path === "/.well-known" ||
+        path.startsWith("/.well-known/")) {
+        return false;
+    }
+    if (matchesPathList(path, config.workspaceAppProtectedPaths))
+        return false;
+    if (matchesPathList(path, config.workspaceAppPublicPaths))
+        return true;
+    return config.workspaceAppAudience === "public";
 }
 function stripAppBasePath(pathname) {
     const basePath = getAppBasePath();
@@ -1494,6 +1799,8 @@ function getTokenLoginHtml(options = {}) {
 // ---------------------------------------------------------------------------
 async function mountBetterAuthRoutes(app, options) {
     const publicPaths = [...(options.publicPaths ?? [])];
+    const workspaceAppAudience = resolveWorkspaceAppAudience(options);
+    const workspaceAppRouteAccess = resolveWorkspaceAppRouteAccess(options);
     // The A2A agent card is part of an open protocol — other agents must be
     // able to discover it without auth. Same for favicons and similar probes.
     for (const pp of ["/.well-known", "/favicon.ico", "/favicon.png"]) {
@@ -1579,7 +1886,18 @@ async function mountBetterAuthRoutes(app, options) {
             });
             const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
             if (q.redirect === "1") {
-                return sendRedirect(event, authUrl, 302);
+                // Return a native web Response — NOT h3 v2's `sendRedirect`. Under
+                // h3 `2.0.1-rc.20`, `sendRedirect = (_, loc, code) => redirect(...)`
+                // ignores the event and returns a non-standard `HTTPResponse` class
+                // instance; the framework request-handler shim doesn't unwrap it and
+                // String()-coerces it to the literal text "[object Object]" with a
+                // 200 status (no Location header), which broke the popup-based
+                // Google sign-in in production. Web `Response` is the proven idiom
+                // here — `oauthCallbackResponse`/`oauthErrorPage` use it and work.
+                return new Response(null, {
+                    status: 302,
+                    headers: { Location: authUrl },
+                });
             }
             return { url: authUrl };
         }));
@@ -1598,10 +1916,6 @@ async function mountBetterAuthRoutes(app, options) {
             try {
                 const query = getQuery(event);
                 const code = query.code;
-                if (!code) {
-                    setResponseStatus(event, 400);
-                    return { error: "Missing authorization code" };
-                }
                 const { redirectUri, desktop, returnUrl, flowId } = decodeOAuthState(query.state, getAppUrl(event, "/_agent-native/google/callback"));
                 callbackFlowId = flowId;
                 callbackDesktop = desktop;
@@ -1612,14 +1926,50 @@ async function mountBetterAuthRoutes(app, options) {
                     hasCode: !!code,
                     returnUrl,
                 });
+                if (!code) {
+                    const providerError = typeof query.error === "string" && query.error
+                        ? query.error
+                        : undefined;
+                    const providerDescription = typeof query.error_description === "string" &&
+                        query.error_description
+                        ? query.error_description
+                        : undefined;
+                    const msg = providerDescription ||
+                        providerError ||
+                        "Missing authorization code";
+                    if (flowId) {
+                        setDesktopExchangeError(flowId, {
+                            message: `Google sign-in failed: ${msg}`,
+                            code: providerError || "missing_authorization_code",
+                        });
+                    }
+                    logGoogleOAuthDebug(event, "callback-error", {
+                        flowId,
+                        desktop,
+                        message: msg,
+                        code: providerError,
+                    });
+                    return oauthErrorPage(`Connection failed: ${msg}`);
+                }
                 // Defence in depth: the state is HMAC-signed, but if the signing
                 // key ever leaked an attacker could mint state with their own
                 // redirect_uri. Re-validate against the same allowlist used at
                 // auth-url time so the token exchange is always sent to a URI we
                 // own.
                 if (!isAllowedOAuthRedirectUri(redirectUri, event)) {
-                    setResponseStatus(event, 400);
-                    return { error: "Invalid redirect_uri in state" };
+                    const msg = "Invalid Google OAuth redirect URI in state. Restart sign-in from this app.";
+                    if (flowId) {
+                        setDesktopExchangeError(flowId, {
+                            message: msg,
+                            code: "invalid_redirect_uri",
+                        });
+                    }
+                    logGoogleOAuthDebug(event, "callback-error", {
+                        flowId,
+                        desktop,
+                        message: msg,
+                    });
+                    return oauthErrorPage(`Connection failed: ${msg}`);
                 }
                 const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
                     method: "POST",
@@ -1690,6 +2040,12 @@ async function mountBetterAuthRoutes(app, options) {
             }
             catch (error) {
                 const msg = error.message || "Unknown error";
+                if (callbackFlowId) {
+                    setDesktopExchangeError(callbackFlowId, {
+                        message: `Google sign-in failed: ${msg}`,
+                        code: "callback_error",
+                    });
+                }
                 logGoogleOAuthDebug(event, "callback-error", {
                     flowId: callbackFlowId,
                     desktop: callbackDesktop,
@@ -1931,13 +2287,7 @@ async function mountBetterAuthRoutes(app, options) {
             }
             const sessionToken = crypto.randomBytes(32).toString("hex");
             await addSession(sessionToken, "user");
-            setCookie(event, COOKIE_NAME, sessionToken, {
-                httpOnly: true,
-                ...crossSiteCookieAttrs(event),
-                ...cookieDomainAttrs(),
-                path: "/",
-                maxAge: sessionMaxAge,
-            });
+            setFrameworkSessionCookie(event, sessionToken);
             return authLoginResponse(event, sessionToken, "user");
         }
         // Email/password login via Better Auth
@@ -1952,13 +2302,7 @@ async function mountBetterAuthRoutes(app, options) {
                 body: { email, password },
             });
             if (result?.token) {
-                setCookie(event, COOKIE_NAME, result.token, {
-                    httpOnly: true,
-                    ...crossSiteCookieAttrs(event),
-                    ...cookieDomainAttrs(),
-                    path: "/",
-                    maxAge: sessionMaxAge,
-                });
+                setFrameworkSessionCookie(event, result.token);
                 await addSession(result.token, email);
                 if (isElectronRequest(event)) {
                     await writeDesktopSso({
@@ -2021,13 +2365,13 @@ async function mountBetterAuthRoutes(app, options) {
     }));
     // Backward-compat: POST /_agent-native/auth/logout
     app.use("/_agent-native/auth/logout", defineEventHandler(async (event) => {
-        const cookie = getCookie(event, COOKIE_NAME);
-        if (cookie)
+        for (const cookie of getFrameworkSessionCookieValues(event)) {
             await removeSession(cookie);
+        }
         const bearerToken = getBearerSessionToken(event);
         if (bearerToken)
             await removeSession(bearerToken);
-        deleteCookie(event, COOKIE_NAME, { path: "/", ...cookieDomainAttrs() });
+        clearFrameworkSessionCookies(event);
         try {
             await auth.api.signOut({ headers: event.headers });
         }
@@ -2090,7 +2434,7 @@ async function mountBetterAuthRoutes(app, options) {
             }
             // 3. Drop the current request's cookie and best-effort sign out
             // of Better Auth (so the response sets the proper expiry header).
-            deleteCookie(event, COOKIE_NAME, { path: "/", ...cookieDomainAttrs() });
+            clearFrameworkSessionCookies(event);
             try {
                 await auth.api.signOut({ headers: event.headers });
             }
@@ -2136,7 +2480,13 @@ async function mountBetterAuthRoutes(app, options) {
             googleSignInNotice: options.googleSignInNotice,
             googleAuthMode: options.googleAuthMode,
         });
-    _authGuardConfig = { loginHtml, publicPaths };
+    _authGuardConfig = {
+        loginHtml,
+        publicPaths,
+        workspaceAppAudience,
+        workspaceAppPublicPaths: workspaceAppRouteAccess.publicPaths,
+        workspaceAppProtectedPaths: workspaceAppRouteAccess.protectedPaths,
+    };
     const guardFn = createAuthGuardFn();
     _authGuardFn = guardFn;
     app.use(defineEventHandler(guardFn));
@@ -2144,7 +2494,7 @@ async function mountBetterAuthRoutes(app, options) {
 // ---------------------------------------------------------------------------
 // mountTokenOnlyRoutes — ACCESS_TOKEN-only auth (no Better Auth)
 // ---------------------------------------------------------------------------
-function mountTokenOnlyRoutes(app, accessTokens, publicPaths = []) {
+function mountTokenOnlyRoutes(app, accessTokens, publicPaths = [], workspaceAppAudience = resolveWorkspaceAppAudience(), workspaceAppRouteAccess = resolveWorkspaceAppRouteAccess()) {
     app.use("/_agent-native/auth/login", defineEventHandler(async (event) => {
         if (getMethod(event) !== "POST") {
             setResponseStatus(event, 405);
@@ -2159,23 +2509,17 @@ function mountTokenOnlyRoutes(app, accessTokens, publicPaths = []) {
         }
         const sessionToken = crypto.randomBytes(32).toString("hex");
         await addSession(sessionToken, "user");
-        setCookie(event, COOKIE_NAME, sessionToken, {
-            httpOnly: true,
-            ...crossSiteCookieAttrs(event),
-            ...cookieDomainAttrs(),
-            path: "/",
-            maxAge: sessionMaxAge,
-        });
+        setFrameworkSessionCookie(event, sessionToken);
         return authLoginResponse(event, sessionToken, "user");
     }));
     app.use("/_agent-native/auth/logout", defineEventHandler(async (event) => {
-        const cookie = getCookie(event, COOKIE_NAME);
-        if (cookie)
+        for (const cookie of getFrameworkSessionCookieValues(event)) {
             await removeSession(cookie);
+        }
         const bearerToken = getBearerSessionToken(event);
         if (bearerToken)
             await removeSession(bearerToken);
-        deleteCookie(event, COOKIE_NAME, { path: "/", ...cookieDomainAttrs() });
+        clearFrameworkSessionCookies(event);
         if (isElectronRequest(event))
             await clearDesktopSso();
         return { ok: true };
@@ -2192,6 +2536,9 @@ function mountTokenOnlyRoutes(app, accessTokens, publicPaths = []) {
         loginHtml: getTokenLoginHtml(),
         getLoginHtml: (_event, rawPath) => getTokenLoginHtml({ requestPath: rawPath }),
         publicPaths,
+        workspaceAppAudience,
+        workspaceAppPublicPaths: workspaceAppRouteAccess.publicPaths,
+        workspaceAppProtectedPaths: workspaceAppRouteAccess.protectedPaths,
     };
     const guardFn = createAuthGuardFn();
     _authGuardFn = guardFn;
@@ -2219,13 +2566,7 @@ function mountAuthFallbackRoutes(app) {
                 body: { email, password },
             });
             if (result?.token) {
-                setCookie(event, COOKIE_NAME, result.token, {
-                    httpOnly: true,
-                    ...crossSiteCookieAttrs(event),
-                    ...cookieDomainAttrs(),
-                    path: "/",
-                    maxAge: sessionMaxAge,
-                });
+                setFrameworkSessionCookie(event, result.token);
                 await addSession(result.token, email);
                 if (isElectronRequest(event)) {
                     await writeDesktopSso({
@@ -2281,13 +2622,13 @@ function mountAuthFallbackRoutes(app) {
         }
     }));
     app.use("/_agent-native/auth/logout", defineEventHandler(async (event) => {
-        const cookie = getCookie(event, COOKIE_NAME);
-        if (cookie)
+        for (const cookie of getFrameworkSessionCookieValues(event)) {
             await removeSession(cookie);
+        }
         const bearerToken = getBearerSessionToken(event);
         if (bearerToken)
             await removeSession(bearerToken);
-        deleteCookie(event, COOKIE_NAME, { path: "/", ...cookieDomainAttrs() });
+        clearFrameworkSessionCookies(event);
         try {
             const auth = await getBetterAuth();
             await auth.api.signOut({ headers: event.headers });
@@ -2367,6 +2708,18 @@ export async function autoMountAuth(app, options = {}) {
                     ...options.publicPaths,
                 ];
             }
+            if (options.workspaceAppAudience) {
+                _authGuardConfig.workspaceAppAudience =
+                    resolveWorkspaceAppAudience(options);
+            }
+            if (options.workspaceAppPublicPaths) {
+                _authGuardConfig.workspaceAppPublicPaths =
+                    options.workspaceAppPublicPaths;
+            }
+            if (options.workspaceAppProtectedPaths) {
+                _authGuardConfig.workspaceAppProtectedPaths =
+                    options.workspaceAppProtectedPaths;
+            }
         }
         return true;
     }
@@ -2386,6 +2739,8 @@ export async function autoMountAuth(app, options = {}) {
     customGetSession = null;
     sessionMaxAge = options.maxAge ?? DEFAULT_MAX_AGE;
     const publicPaths = options.publicPaths ?? [];
+    const workspaceAppAudience = resolveWorkspaceAppAudience(options);
+    const workspaceAppRouteAccess = resolveWorkspaceAppRouteAccess(options);
     mountAuthCorsMiddleware(app);
     if (options.getSession) {
         customGetSession = options.getSession;
@@ -2402,13 +2757,13 @@ export async function autoMountAuth(app, options = {}) {
         }));
         app.use("/_agent-native/auth/login", defineEventHandler(() => ({ ok: true })));
         app.use("/_agent-native/auth/logout", defineEventHandler(async (event) => {
-            const cookie = getCookie(event, COOKIE_NAME);
-            if (cookie)
+            for (const cookie of getFrameworkSessionCookieValues(event)) {
                 await removeSession(cookie);
+            }
             const bearerToken = getBearerSessionToken(event);
             if (bearerToken)
                 await removeSession(bearerToken);
-            deleteCookie(event, COOKIE_NAME, { path: "/", ...cookieDomainAttrs() });
+            clearFrameworkSessionCookies(event);
             if (isElectronRequest(event))
                 await clearDesktopSso();
             return { ok: true };
@@ -2422,6 +2777,9 @@ export async function autoMountAuth(app, options = {}) {
                     getLoginHtml: (_event, rawPath) => getTokenLoginHtml({ requestPath: rawPath }),
                 }),
             publicPaths,
+            workspaceAppAudience,
+            workspaceAppPublicPaths: workspaceAppRouteAccess.publicPaths,
+            workspaceAppProtectedPaths: workspaceAppRouteAccess.protectedPaths,
         };
         const guardFn = createAuthGuardFn();
         _authGuardFn = guardFn;
@@ -2433,7 +2791,7 @@ export async function autoMountAuth(app, options = {}) {
     // ACCESS_TOKEN-only mode
     const tokens = getAccessTokens();
     if (tokens.length > 0) {
-        mountTokenOnlyRoutes(app, tokens, publicPaths);
+        mountTokenOnlyRoutes(app, tokens, publicPaths, workspaceAppAudience, workspaceAppRouteAccess);
         if (process.env.DEBUG)
             console.log(`[agent-native] Auth enabled — ${tokens.length} access token(s) configured.`);
         return true;
@@ -2457,7 +2815,13 @@ export async function autoMountAuth(app, options = {}) {
                 googleSignInNotice: options.googleSignInNotice,
                 googleAuthMode: options.googleAuthMode,
             });
-        _authGuardConfig = { loginHtml, publicPaths };
+        _authGuardConfig = {
+            loginHtml,
+            publicPaths,
+            workspaceAppAudience,
+            workspaceAppPublicPaths: workspaceAppRouteAccess.publicPaths,
+            workspaceAppProtectedPaths: workspaceAppRouteAccess.protectedPaths,
+        };
         const guardFn = createAuthGuardFn();
         _authGuardFn = guardFn;
         app.use(defineEventHandler(guardFn));

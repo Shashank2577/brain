@@ -148,6 +148,7 @@ async function createWorkspaceInteractive(name, opts, clack) {
                 workspaceRoot: targetDir,
                 workspaceCoreName,
                 coreDependencyVersion: getCoreDependencyVersion(),
+                dispatchDependencyVersion: getDispatchDependencyVersion(),
             });
             fixPackageJsonName(appDir, t);
             rewriteNetlifyToml(appDir, t, "workspace");
@@ -252,10 +253,46 @@ async function scaffoldWorkspaceRoot(targetDir, name) {
     copyDir(coreTemplate, corePackageDir);
     replacePlaceholders(corePackageDir, name, titleCase(name));
     rewriteCoreDependencyVersions(corePackageDir);
+    setupAgentSymlinks(corePackageDir);
     // Ensure apps/ exists (even if empty).
     fs.mkdirSync(path.join(targetDir, "apps"), { recursive: true });
     // Root-level agent instructions apply before an agent descends into an app.
+    linkWorkspaceRootSkills(targetDir);
     setupAgentSymlinks(targetDir);
+}
+function linkWorkspaceRootSkills(targetDir) {
+    const sharedSkillsDir = path.join(targetDir, "packages", "shared", ".agents", "skills");
+    if (!fs.existsSync(sharedSkillsDir))
+        return;
+    const agentsDir = path.join(targetDir, ".agents");
+    const linkPath = path.join(agentsDir, "skills");
+    const target = "../packages/shared/.agents/skills";
+    fs.mkdirSync(agentsDir, { recursive: true });
+    try {
+        const stat = fs.lstatSync(linkPath);
+        if (stat.isSymbolicLink()) {
+            if (fs.readlinkSync(linkPath) === target)
+                return;
+            fs.unlinkSync(linkPath);
+        }
+        else {
+            return;
+        }
+    }
+    catch {
+        // Missing link; create below.
+    }
+    try {
+        fs.symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
+    }
+    catch {
+        try {
+            copyDir(sharedSkillsDir, linkPath);
+        }
+        catch {
+            // Best-effort fallback for environments that disallow symlinks.
+        }
+    }
 }
 /* ─────────────────────────────────────────────────────────────────────────
  * Adding an app into an existing workspace
@@ -326,6 +363,7 @@ async function scaffoldOneAppIntoWorkspace(workspace, appName, templateName, cla
             workspaceRoot: workspace.workspaceRoot,
             workspaceCoreName: workspace.workspaceCoreName,
             coreDependencyVersion: getCoreDependencyVersion(),
+            dispatchDependencyVersion: getDispatchDependencyVersion(),
         });
         fixPackageJsonName(appDir, appName, templateName);
         rewriteNetlifyToml(appDir, appName, "workspace");
@@ -768,7 +806,7 @@ export function detectWorkspace(startDir) {
 }
 export { parseWorkspaceScope };
 /** @internal — exported for E2E tests */
-export { scaffoldWorkspaceRoot as _scaffoldWorkspaceRoot, scaffoldAppTemplate as _scaffoldAppTemplate, scaffoldRequiredPackages as _scaffoldRequiredPackages, postProcessStandalone as _postProcessStandalone, loadCatalog as _loadCatalog, fixPackageJsonName as _fixPackageJsonName, renameGitignore as _renameGitignore, rewriteNetlifyToml as _rewriteNetlifyToml, getCoreDependencyVersion as _getCoreDependencyVersion, getGitHubTemplateRef as _getGitHubTemplateRef, getGitHubTemplateRefCandidates as _getGitHubTemplateRefCandidates, shouldSkipScaffoldEntry as _shouldSkipScaffoldEntry, tarExtractArgs as _tarExtractArgs, };
+export { scaffoldWorkspaceRoot as _scaffoldWorkspaceRoot, scaffoldAppTemplate as _scaffoldAppTemplate, scaffoldRequiredPackages as _scaffoldRequiredPackages, postProcessStandalone as _postProcessStandalone, loadCatalog as _loadCatalog, fixPackageJsonName as _fixPackageJsonName, renameGitignore as _renameGitignore, rewriteNetlifyToml as _rewriteNetlifyToml, getCoreDependencyVersion as _getCoreDependencyVersion, getDispatchDependencyVersion as _getDispatchDependencyVersion, getGitHubTemplateRef as _getGitHubTemplateRef, getGitHubTemplateRefCandidates as _getGitHubTemplateRefCandidates, shouldSkipScaffoldEntry as _shouldSkipScaffoldEntry, tarExtractArgs as _tarExtractArgs, };
 /* ─────────────────────────────────────────────────────────────────────────
  * Download / copy helpers
  * ───────────────────────────────────────────────────────────────────────── */
@@ -913,6 +951,14 @@ function getCoreDependencyVersion() {
     // published. The dist-tag resolves to the newest released core today and to
     // this package version once the release goes live. Local file deps are
     // intentionally opt-in so scaffolded repos remain portable by default.
+    return "latest";
+}
+function getDispatchDependencyVersion() {
+    if (process.env.AGENT_NATIVE_CREATE_USE_LOCAL_CORE === "1") {
+        const localDispatch = findLocalPackage("dispatch");
+        if (localDispatch)
+            return pathToFileURL(localDispatch).href;
+    }
     return "latest";
 }
 function getCorePackageVersion() {

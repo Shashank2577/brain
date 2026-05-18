@@ -513,7 +513,7 @@ export declare const routingFormShares: import("drizzle-orm/sqlite-core").SQLite
             tableName: string;
             dataType: "string";
             columnType: "SQLiteText";
-            data: "viewer" | "editor" | "admin";
+            data: "admin" | "viewer" | "editor";
             driverParam: string;
             notNull: true;
             hasDefault: true;

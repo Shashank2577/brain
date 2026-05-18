@@ -9,7 +9,7 @@ import { subscribe } from "../event-bus/index.js";
 import { resourceListAllOwners, resourcePut } from "../resources/store.js";
 import { runWithRequestContext } from "../server/request-context.js";
 import { runAgentLoop, actionsToEngineTools, getOwnerActiveApiKey, } from "../agent/production-agent.js";
-import { createAnthropicEngine } from "../agent/engine/index.js";
+import { getStoredModelForEngine, resolveEngine, } from "../agent/engine/index.js";
 import { createThread } from "../chat-threads/store.js";
 import { evaluateCondition } from "./condition-evaluator.js";
 // Re-use the job frontmatter parser — triggers extend the same format.
@@ -289,7 +289,13 @@ async function dispatchAgentic(resource, meta, body, payload, eventMeta, apiKey)
             const actions = _deps.getActions();
             const systemPrompt = await _deps.getSystemPrompt(jobUserEmail);
             const tools = actionsToEngineTools(actions);
-            const engine = createAnthropicEngine({ apiKey });
+            const engine = await resolveEngine({
+                apiKey,
+                appId: _deps.appId,
+            });
+            const model = _deps.model ??
+                (await getStoredModelForEngine(engine, { appId: _deps.appId })) ??
+                engine.defaultModel;
             const thread = await createThread(jobUserEmail, {
                 title: `Trigger: ${triggerName} — ${now.toLocaleDateString()}`,
             });
@@ -323,7 +329,7 @@ ${body}`;
             try {
                 await runAgentLoop({
                     engine,
-                    model: _deps.model,
+                    model,
                     systemPrompt,
                     tools,
                     messages,

@@ -70,6 +70,11 @@ export interface AgentChatAttachment {
     contentType?: string;
     text?: string;
 }
+export interface AgentChatScope {
+    type: string;
+    id: string;
+    label?: string;
+}
 export interface AgentChatRequest {
     message: string;
     /**
@@ -99,6 +104,10 @@ export interface AgentChatRequest {
     effort?: ReasoningEffort;
     /** Usage-tracking label for this call (e.g. "chat", "summarize"). Default: "chat". */
     usageLabel?: string;
+    /** Stable browser tab id so screen/url context and navigation commands are tab-scoped. */
+    browserTabId?: string;
+    /** Resource scope for this chat thread, e.g. the deck currently bound to the tab. */
+    scope?: AgentChatScope | null;
 }
 export type AgentChatEvent = {
     type: "text";

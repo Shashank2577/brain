@@ -1,10 +1,11 @@
 /**
  * Dev-mode script registry.
  *
- * Provides file system, shell, and database tools for the agent
+ * Provides shared coding and database tools for the agent
  * when running in development mode. These tools should NEVER be
  * registered in production.
  */
+import { createCodingToolRegistry } from "../../coding-tools/index.js";
 import { tool as readFileTool, run as readFileRun } from "./read-file.js";
 import { tool as writeFileTool, run as writeFileRun } from "./write-file.js";
 import { tool as listFilesTool, run as listFilesRun } from "./list-files.js";
@@ -47,11 +48,11 @@ function wrapCliScript(tool, cliDefault, opts) {
     };
 }
 /**
- * Creates the dev-mode script registry with file system, shell,
- * and database tools. Call this and merge with your app's registry
+ * Creates the dev-mode script registry with shared bash/read/edit/write
+ * coding tools and database tools. Call this and merge with your app's registry
  * when NODE_ENV !== "production".
  */
-export async function createDevScriptRegistry() {
+export async function createDevScriptRegistry(options = {}) {
     // Lazy-import DB scripts to avoid requiring libsql in non-DB apps
     let dbEntries = {};
     try {
@@ -190,16 +191,30 @@ export async function createDevScriptRegistry() {
     catch {
         // DB scripts not available (no libsql) — skip silently
     }
+    const codingEntries = createCodingToolRegistry({
+        cwd: process.cwd(),
+        bashThrowsOnNonZero: true,
+    });
+    const legacyEntries = options.legacyAliases
+        ? {
+            "read-file": { tool: readFileTool, run: readFileRun, readOnly: true },
+            "write-file": { tool: writeFileTool, run: writeFileRun },
+            "list-files": {
+                tool: listFilesTool,
+                run: listFilesRun,
+                readOnly: true,
+            },
+            "search-files": {
+                tool: searchFilesTool,
+                run: searchFilesRun,
+                readOnly: true,
+            },
+            shell: { tool: shellTool, run: shellRun },
+        }
+        : {};
     return {
-        "read-file": { tool: readFileTool, run: readFileRun, readOnly: true },
-        "write-file": { tool: writeFileTool, run: writeFileRun },
-        "list-files": { tool: listFilesTool, run: listFilesRun, readOnly: true },
-        "search-files": {
-            tool: searchFilesTool,
-            run: searchFilesRun,
-            readOnly: true,
-        },
-        shell: { tool: shellTool, run: shellRun },
+        ...codingEntries,
+        ...legacyEntries,
         ...dbEntries,
     };
 }

@@ -122,7 +122,7 @@ export function createGoogleRealtimeSessionHandler() {
                     error: "Builder must be connected to mint a managed realtime transcription session.",
                 };
             }
-            const apiHost = process.env.BUILDER_API_HOST || "https://ai-services.builder.io";
+            const apiHost = process.env.BUILDER_API_HOST || "https://api.builder.io";
             const body = ((await readBody(event).catch(() => ({}))) || {});
             const res = await fetch(`${apiHost}/agent-native/transcribe-stream/session`, {
                 method: "POST",

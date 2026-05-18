@@ -1,5 +1,5 @@
 import { drizzle as drizzleD1 } from "drizzle-orm/d1";
-import { getDialect, getDatabaseUrl, getDatabaseAuthToken, isLocalSqliteUrl, prepareLocalSqliteUrl, sqliteFilenameFromUrl, } from "./client.js";
+import { getDialect, getDatabaseUrl, getDatabaseAuthToken, isLocalSqliteUrl, prepareLocalSqliteUrl, sqliteFilenameFromUrl, pgPoolOptions, neonPoolMax, } from "./client.js";
 // Lazy driver loaders — cached promises so dynamic import only runs once.
 let _pgDrizzle;
 function getPgDrizzle() {
@@ -85,7 +85,7 @@ export function createGetDb(schema) {
         if (dialect === "postgres") {
             if (isNeonUrl(url)) {
                 _dbReady = getNeonServerlessDrizzle().then(({ drizzle, Pool }) => {
-                    const pool = new Pool({ connectionString: url });
+                    const pool = new Pool({ connectionString: url, max: neonPoolMax() });
                     // Neon Pool emits 'error' on WebSocket drops (idle, Lambda
                     // suspend, network). Without a listener Node 24 throws
                     // `Unhandled error` as a fatal uncaught exception. The next
@@ -98,13 +98,10 @@ export function createGetDb(schema) {
             }
             else {
                 _dbReady = getPgDrizzle().then(({ drizzle, postgres }) => {
-                    const client = postgres(url, {
-                        onnotice: () => { },
-                        idle_timeout: 240,
-                        max_lifetime: 60 * 30,
-                        connect_timeout: 10,
-                        ...(url.includes("supabase") ? { prepare: false } : {}),
-                    });
+                    // pgPoolOptions caps the pool to a small size on serverless so
+                    // concurrent frozen instances don't exhaust Neon/Postgres'
+                    // connection limit ("Max client connections reached").
+                    const client = postgres(url, pgPoolOptions(url));
                     _db = drizzle(client, { schema });
                 });
             }

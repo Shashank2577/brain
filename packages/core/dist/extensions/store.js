@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { appStatePut } from "../application-state/store.js";
 import { getDbExec, isPostgres, retryOnDdlRace } from "../db/client.js";
 import { createGetDb } from "../db/create-get-db.js";
+import { recordChange } from "../server/poll.js";
 import { accessFilter, assertAccess, resolveAccess, ForbiddenError, } from "../sharing/access.js";
 import { getRequestUserEmail, getRequestOrgId, } from "../server/request-context.js";
 import { registerShareableResource } from "../sharing/registry.js";
-import { extensions, extensionHides, extensionShares, EXTENSIONS_CREATE_SQL, EXTENSIONS_CREATE_SQL_PG, EXTENSION_SHARES_CREATE_SQL, EXTENSION_SHARES_CREATE_SQL_PG, EXTENSION_DATA_CREATE_SQL, EXTENSION_DATA_CREATE_SQL_PG, EXTENSION_DATA_ITEM_INDEX_SQL, EXTENSION_DATA_ITEM_INDEX_SQL_PG, EXTENSION_DATA_DROP_OLD_INDEX_SQL, EXTENSION_DATA_DROP_OLD_INDEX_SQL_PG, EXTENSIONS_OWNER_INDEX_SQL, EXTENSIONS_ORG_INDEX_SQL, EXTENSION_SHARES_RESOURCE_INDEX_SQL, EXTENSION_HIDES_CREATE_SQL, EXTENSION_HIDES_CREATE_SQL_PG, EXTENSION_HIDES_UNIQUE_INDEX_SQL, EXTENSION_HIDES_OWNER_INDEX_SQL, EXTENSION_CONSENTS_CREATE_SQL, EXTENSION_CONSENTS_CREATE_SQL_PG, EXTENSION_CONSENTS_VIEWER_INDEX_SQL, } from "./schema.js";
+import { extensions, extensionHides, extensionShares, EXTENSIONS_CREATE_SQL, EXTENSIONS_CREATE_SQL_PG, EXTENSION_SHARES_CREATE_SQL, EXTENSION_SHARES_CREATE_SQL_PG, EXTENSION_DATA_CREATE_SQL, EXTENSION_DATA_CREATE_SQL_PG, EXTENSION_DATA_ITEM_INDEX_SQL, EXTENSION_DATA_ITEM_INDEX_SQL_PG, EXTENSION_DATA_DROP_OLD_INDEX_SQL, EXTENSION_DATA_DROP_OLD_INDEX_SQL_PG, EXTENSIONS_OWNER_INDEX_SQL, EXTENSIONS_ORG_INDEX_SQL, EXTENSIONS_UPDATED_INDEX_SQL, EXTENSION_SHARES_RESOURCE_INDEX_SQL, EXTENSION_HIDES_CREATE_SQL, EXTENSION_HIDES_CREATE_SQL_PG, EXTENSION_HIDES_UNIQUE_INDEX_SQL, EXTENSION_HIDES_OWNER_INDEX_SQL, EXTENSION_CONSENTS_CREATE_SQL, EXTENSION_CONSENTS_CREATE_SQL_PG, EXTENSION_CONSENTS_VIEWER_INDEX_SQL, } from "./schema.js";
+import { EXTENSION_CHANGE_MARKER_KEY, extensionChangeMarkerSession, extensionChangeMarkerValue, } from "./change-marker.js";
 const getDb = createGetDb({ extensions, extensionShares, extensionHides });
 let _initPromise;
 export async function ensureExtensionsTables() {
@@ -25,6 +28,7 @@ export async function ensureExtensionsTables() {
             await retryOnDdlRace(() => client.execute(pg ? EXTENSION_DATA_ITEM_INDEX_SQL_PG : EXTENSION_DATA_ITEM_INDEX_SQL));
             await retryOnDdlRace(() => client.execute(EXTENSIONS_OWNER_INDEX_SQL));
             await retryOnDdlRace(() => client.execute(EXTENSIONS_ORG_INDEX_SQL));
+            await retryOnDdlRace(() => client.execute(EXTENSIONS_UPDATED_INDEX_SQL));
             await retryOnDdlRace(() => client.execute(EXTENSION_SHARES_RESOURCE_INDEX_SQL));
             await retryOnDdlRace(() => client.execute(pg ? EXTENSION_HIDES_CREATE_SQL_PG : EXTENSION_HIDES_CREATE_SQL));
             await retryOnDdlRace(() => client.execute(EXTENSION_HIDES_UNIQUE_INDEX_SQL));
@@ -127,6 +131,88 @@ export function registerExtensionsShareable() {
         requireOrgMemberForUserShares: true,
     });
 }
+function targetKey(target) {
+    if (target.owner)
+        return `owner:${target.owner}`;
+    if (target.orgId)
+        return `org:${target.orgId}`;
+    return null;
+}
+function addExtensionChangeTarget(targets, target) {
+    const key = targetKey(target);
+    if (key)
+        targets.set(key, target);
+}
+async function extensionChangeTargetsForRow(row) {
+    const targets = new Map();
+    addExtensionChangeTarget(targets, { owner: row.ownerEmail });
+    if (row.visibility === "org" && row.orgId) {
+        addExtensionChangeTarget(targets, { orgId: row.orgId });
+    }
+    const db = getDb();
+    const shares = (await db
+        .select({
+        principalType: extensionShares.principalType,
+        principalId: extensionShares.principalId,
+    })
+        .from(extensionShares)
+        .where(eq(extensionShares.resourceId, row.id)));
+    for (const share of shares) {
+        if (share.principalType === "user") {
+            addExtensionChangeTarget(targets, { owner: share.principalId });
+        }
+        else if (share.principalType === "org") {
+            addExtensionChangeTarget(targets, { orgId: share.principalId });
+        }
+    }
+    return Array.from(targets.values());
+}
+async function extensionChangeTargetsForId(id) {
+    const db = getDb();
+    const rows = await db.select().from(extensions).where(eq(extensions.id, id));
+    const row = rows[0];
+    return row ? extensionChangeTargetsForRow(row) : [];
+}
+export async function getExtensionChangeTargets(id) {
+    await ensureExtensionsTables();
+    return extensionChangeTargetsForId(id);
+}
+function dedupeExtensionChangeTargets(targets) {
+    const unique = new Map();
+    for (const target of targets) {
+        const key = targetKey(target);
+        if (key)
+            unique.set(key, target);
+    }
+    return Array.from(unique.values());
+}
+async function notifyExtensionChanged(targets) {
+    const uniqueTargets = dedupeExtensionChangeTargets(targets);
+    if (uniqueTargets.length === 0)
+        return;
+    for (const target of uniqueTargets) {
+        recordChange({
+            source: "extensions",
+            type: "change",
+            key: "*",
+            ...(target.owner ? { owner: target.owner } : {}),
+            ...(target.orgId ? { orgId: target.orgId } : {}),
+        });
+    }
+    await Promise.all(uniqueTargets.map(async (target) => {
+        const sessionId = extensionChangeMarkerSession(target);
+        if (!sessionId)
+            return;
+        await appStatePut(sessionId, EXTENSION_CHANGE_MARKER_KEY, extensionChangeMarkerValue(target));
+    }));
+}
+export async function notifyExtensionChangeForResource(id, beforeTargets = []) {
+    await ensureExtensionsTables();
+    await notifyExtensionChanged([
+        ...beforeTargets,
+        ...(await extensionChangeTargetsForId(id)),
+    ]);
+}
 export async function listExtensions(options = {}) {
     await ensureExtensionsTables();
     const db = getDb();
@@ -168,6 +254,7 @@ export async function createExtension(data) {
         visibility: "private",
     };
     await db.insert(extensions).values(row);
+    await notifyExtensionChanged([{ owner: row.ownerEmail }]);
     return row;
 }
 export async function updateExtension(id, data) {
@@ -181,6 +268,7 @@ export async function updateExtension(id, data) {
         throw new ForbiddenError("Extensions cannot be made public — share with specific people or your organization instead.");
     }
     const db = getDb();
+    const beforeTargets = await extensionChangeTargetsForId(id);
     const updates = {
         updatedAt: new Date().toISOString(),
     };
@@ -194,7 +282,14 @@ export async function updateExtension(id, data) {
         updates.visibility = data.visibility;
     await db.update(extensions).set(updates).where(eq(extensions.id, id));
     const rows = await db.select().from(extensions).where(eq(extensions.id, id));
-    return rows[0] ?? null;
+    const row = rows[0] ?? null;
+    if (row) {
+        await notifyExtensionChanged([
+            ...beforeTargets,
+            ...(await extensionChangeTargetsForRow(row)),
+        ]);
+    }
+    return row;
 }
 export async function updateExtensionContent(id, opts) {
     await ensureExtensionsTables();
@@ -219,20 +314,30 @@ export async function updateExtensionContent(id, opts) {
     else {
         return null;
     }
+    const beforeTargets = await extensionChangeTargetsForId(id);
     await db
         .update(extensions)
         .set({ content: newContent, updatedAt: new Date().toISOString() })
         .where(eq(extensions.id, id));
     const rows = await db.select().from(extensions).where(eq(extensions.id, id));
-    return rows[0] ?? null;
+    const row = rows[0] ?? null;
+    if (row) {
+        await notifyExtensionChanged([
+            ...beforeTargets,
+            ...(await extensionChangeTargetsForRow(row)),
+        ]);
+    }
+    return row;
 }
 export async function deleteExtension(id) {
     await ensureExtensionsTables();
     await assertAccess("extension", id, "admin");
     const db = getDb();
     const rows = await db.select().from(extensions).where(eq(extensions.id, id));
-    if (!rows[0])
+    const row = rows[0];
+    if (!row)
         return false;
+    const targets = await extensionChangeTargetsForRow(row);
     await db.delete(extensionShares).where(eq(extensionShares.resourceId, id));
     await db.delete(extensionHides).where(eq(extensionHides.extensionId, id));
     await getDbExec().execute({
@@ -242,6 +347,7 @@ export async function deleteExtension(id) {
     const { cascadeDeleteExtensionSlots } = await import("./slots/store.js");
     await cascadeDeleteExtensionSlots(id);
     await db.delete(extensions).where(eq(extensions.id, id));
+    await notifyExtensionChanged(targets);
     return true;
 }
 export async function getHiddenExtensionIdsForCurrentUser() {
@@ -269,6 +375,7 @@ export async function hideExtension(id) {
       ON CONFLICT (owner_email, tool_id) DO NOTHING`,
         args: [randomUUID(), id, userEmail, now],
     });
+    await notifyExtensionChanged([{ owner: userEmail }]);
     return true;
 }
 export async function unhideExtension(id) {
@@ -280,6 +387,7 @@ export async function unhideExtension(id) {
         sql: `DELETE FROM tool_hidden_extensions WHERE tool_id = ? AND owner_email = ?`,
         args: [id, userEmail],
     });
+    await notifyExtensionChanged([{ owner: userEmail }]);
     return true;
 }
 //# sourceMappingURL=store.js.map

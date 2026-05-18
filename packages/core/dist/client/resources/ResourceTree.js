@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React, { useState, useRef, useCallback } from "react";
-import { IconChevronRight, IconChevronDown, IconFolder, IconFileText, IconFileCode, IconPhoto, IconFile, IconPlus, IconTrash, IconMessageChatbot, IconPlugConnected, IconBulb, IconClockHour3, IconLoader2, } from "@tabler/icons-react";
+import { IconChevronRight, IconChevronDown, IconFolder, IconFileText, IconFileCode, IconPhoto, IconFile, IconPlus, IconTrash, IconMessageChatbot, IconPlugConnected, IconBrowser, IconDeviceDesktop, IconBulb, IconClockHour3, IconLoader2, IconHelpCircle, } from "@tabler/icons-react";
 import { cn } from "../utils.js";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, } from "../components/ui/tooltip.js";
 function StatusDot({ className, tooltip, }) {
@@ -13,6 +13,9 @@ function getFileIcon(node) {
     }
     if (node.kind === "remote-agent" || node.kind === "mcp-server") {
         return (_jsx(IconPlugConnected, { className: "h-3.5 w-3.5 shrink-0 text-muted-foreground" }));
+    }
+    if (node.kind === "mcp-builtin") {
+        return node.mcpBuiltinMeta?.exclusiveGroup === "browser" ? (_jsx(IconBrowser, { className: "h-3.5 w-3.5 shrink-0 text-muted-foreground" })) : (_jsx(IconDeviceDesktop, { className: "h-3.5 w-3.5 shrink-0 text-muted-foreground" }));
     }
     if (node.kind === "skill") {
         return _jsx(IconBulb, { className: "h-3.5 w-3.5 shrink-0 text-muted-foreground" });
@@ -40,6 +43,23 @@ function McpStatusDot({ server }) {
         return (_jsx(StatusDot, { className: "rounded-full bg-red-500", tooltip: `Error: ${status.error}` }));
     }
     return (_jsx(StatusDot, { className: "rounded-full bg-muted-foreground/40", tooltip: "Connecting\u2026" }));
+}
+function BuiltinStatusDot({ node }) {
+    const meta = node.mcpBuiltinMeta;
+    if (!meta?.available) {
+        return (_jsx(StatusDot, { className: "rounded-full bg-muted-foreground/30", tooltip: meta?.unavailableReason ?? "Not available on this host" }));
+    }
+    if (!meta.scopeEnabled) {
+        return (_jsx(StatusDot, { className: "rounded-full bg-muted-foreground/40", tooltip: "Disabled" }));
+    }
+    const status = meta.status?.[meta.scope];
+    if (status?.state === "connected") {
+        return (_jsx(StatusDot, { className: "rounded-full bg-green-500", tooltip: `Connected — ${status.toolCount} tool${status.toolCount === 1 ? "" : "s"}` }));
+    }
+    if (status?.state === "error") {
+        return (_jsx(StatusDot, { className: "rounded-full bg-red-500", tooltip: `Error: ${status.error}` }));
+    }
+    return _jsx(StatusDot, { className: "rounded-full bg-amber-500", tooltip: "Enabled" });
 }
 function JobStatusDot({ meta }) {
     if (!meta.enabled) {
@@ -74,10 +94,11 @@ function TreeNodeRow({ node, depth, expanded, selectedId, deletingId, readOnly, 
                     else if (node.resource) {
                         onSelect(node.resource);
                     }
-                }, onMouseLeave: () => setConfirmingDelete(false), children: [isFolder ? (isExpanded ? (_jsx(IconChevronDown, { className: "h-3 w-3 shrink-0" })) : (_jsx(IconChevronRight, { className: "h-3 w-3 shrink-0" }))) : (_jsx("span", { className: "w-3 shrink-0" })), isFolder ? (_jsx(IconFolder, { className: "h-3.5 w-3.5 shrink-0 text-muted-foreground" })) : (getFileIcon(node)), _jsx("span", { className: "min-w-0 truncate text-[12px] leading-none", children: node.name }), node.jobMeta && _jsx(JobStatusDot, { meta: node.jobMeta }), node.mcpServerMeta && _jsx(McpStatusDot, { server: node.mcpServerMeta }), !readOnly && (_jsx("div", { className: cn("ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-hover/row:opacity-100", confirmingDelete && "opacity-100"), children: _jsxs(TooltipProvider, { delayDuration: 200, children: [isFolder && (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: (e) => {
+                }, onMouseLeave: () => setConfirmingDelete(false), children: [isFolder ? (isExpanded ? (_jsx(IconChevronDown, { className: "h-3 w-3 shrink-0" })) : (_jsx(IconChevronRight, { className: "h-3 w-3 shrink-0" }))) : (_jsx("span", { className: "w-3 shrink-0" })), isFolder ? (_jsx(IconFolder, { className: "h-3.5 w-3.5 shrink-0 text-muted-foreground" })) : (getFileIcon(node)), _jsx("span", { className: "min-w-0 truncate text-[12px] leading-none", children: node.name }), node.jobMeta && _jsx(JobStatusDot, { meta: node.jobMeta }), node.mcpServerMeta && _jsx(McpStatusDot, { server: node.mcpServerMeta }), node.mcpBuiltinMeta && _jsx(BuiltinStatusDot, { node: node }), !readOnly && (_jsx("div", { className: cn("ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-hover/row:opacity-100", confirmingDelete && "opacity-100"), children: _jsxs(TooltipProvider, { delayDuration: 200, children: [isFolder && (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: (e) => {
                                                     e.stopPropagation();
                                                     onStartCreate(node.path, "file");
                                                 }, "aria-label": "New file", className: "flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent/50", children: _jsx(IconPlus, { className: "h-3 w-3" }) }) }), _jsx(TooltipContent, { children: "New file" })] })), node.resource &&
+                                    node.kind !== "mcp-builtin" &&
                                     (isDeleting ? (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("span", { "aria-label": "Deleting\u2026", className: "flex h-5 w-5 items-center justify-center rounded text-muted-foreground", children: _jsx(IconLoader2, { className: "h-3 w-3 animate-spin" }) }) }), _jsx(TooltipContent, { children: "Deleting\u2026" })] })) : (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: (e) => {
                                                         e.stopPropagation();
                                                         if (confirmingDelete) {
@@ -173,7 +194,7 @@ export function ResourceTree({ tree, selectedId, onSelect, onCreateFile, onCreat
             onDrop(e.dataTransfer.files);
         }
     }, [onDrop, readOnly]);
-    return (_jsxs("div", { className: cn("p-1", dragOver && !readOnly && "ring-1 ring-inset ring-accent"), onDragOver: readOnly ? undefined : handleDragOver, onDragLeave: readOnly ? undefined : handleDragLeave, onDrop: readOnly ? undefined : handleDrop, children: [_jsx("div", { className: "group/root flex items-center justify-between px-1.5 py-1", children: _jsxs(TooltipProvider, { delayDuration: 200, children: [titleTooltip ? (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsxs("span", { className: "flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60", children: [title, headingHint && (_jsx("span", { className: "text-[10px] font-normal normal-case tracking-normal text-muted-foreground/50", children: headingHint }))] }) }), _jsx(TooltipContent, { children: titleTooltip })] })) : (_jsxs("span", { className: "flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60", children: [title, headingHint && (_jsx("span", { className: "text-[10px] font-normal normal-case tracking-normal text-muted-foreground/50", children: headingHint }))] })), !readOnly && (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => handleStartCreate("", "file"), "aria-label": "New file", className: "flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 opacity-0 group-hover/root:opacity-100 hover:text-foreground hover:bg-accent/50", children: _jsx(IconPlus, { className: "h-3 w-3" }) }) }), _jsx(TooltipContent, { children: "New file" })] }))] }) }), tree.map((node) => (_jsx(TreeNodeRow, { node: node, depth: 0, expanded: expanded, selectedId: selectedId, deletingId: deletingId, readOnly: readOnly, onToggle: toggleExpand, onSelect: onSelect, onDelete: onDelete, onStartCreate: handleStartCreate }, node.resource?.id ?? node.path))), isLoading && tree.length === 0 && (_jsx("div", { className: "px-1 py-1", children: Array.from({ length: 3 }).map((_, i) => (_jsxs("div", { className: "flex items-center gap-2 px-1.5 py-1", children: [_jsx("div", { className: "h-3.5 w-3.5 rounded bg-muted-foreground/10 animate-pulse", style: { animationDelay: `${i * 75}ms` } }), _jsx("div", { className: "h-3 rounded bg-muted-foreground/10 animate-pulse", style: {
+    return (_jsxs("div", { className: cn("p-1", dragOver && !readOnly && "ring-1 ring-inset ring-accent"), onDragOver: readOnly ? undefined : handleDragOver, onDragLeave: readOnly ? undefined : handleDragLeave, onDrop: readOnly ? undefined : handleDrop, children: [_jsx("div", { className: "group/root flex items-center justify-between px-1.5 py-1", children: _jsxs(TooltipProvider, { delayDuration: 200, children: [_jsxs("span", { className: "flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60", children: [title, headingHint && (_jsx("span", { className: "text-[10px] font-normal normal-case tracking-normal text-muted-foreground/50", children: headingHint })), titleTooltip && (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { type: "button", "aria-label": `About ${title}`, className: "flex h-3.5 w-3.5 items-center justify-center rounded-full text-muted-foreground/40 hover:text-muted-foreground", children: _jsx(IconHelpCircle, { className: "h-3 w-3" }) }) }), _jsx(TooltipContent, { children: titleTooltip })] }))] }), !readOnly && (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => handleStartCreate("", "file"), "aria-label": "New file", className: "flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 opacity-0 group-hover/root:opacity-100 hover:text-foreground hover:bg-accent/50", children: _jsx(IconPlus, { className: "h-3 w-3" }) }) }), _jsx(TooltipContent, { children: "New file" })] }))] }) }), tree.map((node) => (_jsx(TreeNodeRow, { node: node, depth: 0, expanded: expanded, selectedId: selectedId, deletingId: deletingId, readOnly: readOnly, onToggle: toggleExpand, onSelect: onSelect, onDelete: onDelete, onStartCreate: handleStartCreate }, node.resource?.id ?? node.path))), isLoading && tree.length === 0 && (_jsx("div", { className: "px-1 py-1", children: Array.from({ length: 3 }).map((_, i) => (_jsxs("div", { className: "flex items-center gap-2 px-1.5 py-1", children: [_jsx("div", { className: "h-3.5 w-3.5 rounded bg-muted-foreground/10 animate-pulse", style: { animationDelay: `${i * 75}ms` } }), _jsx("div", { className: "h-3 rounded bg-muted-foreground/10 animate-pulse", style: {
                                 width: `${50 + ((i * 37) % 40)}%`,
                                 animationDelay: `${i * 75}ms`,
                             } })] }, i))) })), creating && creating.parentPath === "" && (_jsx(InlineInput, { depth: 0, onConfirm: handleConfirmCreate, onCancel: handleCancelCreate })), creating && creating.parentPath !== "" && (_jsx(InlineInput, { depth: creating.parentPath.split("/").filter(Boolean).length, onConfirm: handleConfirmCreate, onCancel: handleCancelCreate })), tree.length === 0 && !creating && !isLoading && (_jsx("div", { className: "px-2 py-1", children: _jsx("p", { className: "text-[11px] text-muted-foreground/40", children: "No files yet" }) }))] }));

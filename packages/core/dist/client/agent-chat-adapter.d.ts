@@ -1,5 +1,6 @@
 import type { ChatModelAdapter } from "@assistant-ui/react";
 import type { ReasoningEffort } from "../shared/reasoning-effort.js";
+import type { ChatThreadScope } from "./use-chat-threads.js";
 /**
  * The composer's exec mode is sent as explicit request metadata. The server
  * owns the plan-mode prompt and read-only tool filtering so the chat history
@@ -24,6 +25,10 @@ export declare function createAgentChatAdapter(options?: {
     };
     execModeRef?: {
         current: "build" | "plan" | undefined;
+    };
+    browserTabId?: string;
+    scopeRef?: {
+        current: ChatThreadScope | null | undefined;
     };
 }): ChatModelAdapter;
 //# sourceMappingURL=agent-chat-adapter.d.ts.map

@@ -31,6 +31,23 @@ export interface CoreRoutesPluginOptions {
     disablePing?: boolean;
     /** Disable the /_agent-native/application-state routes. */
     disableAppState?: boolean;
+    /** Disable the /_agent-native/open deep-link route. */
+    disableOpenRoute?: boolean;
+    /**
+     * Disable the /_agent-native/mcp/connect routes (browser Connect page +
+     * CLI device-code flow that mints per-user, revocable MCP tokens).
+     * Enabled by default — the routes are session-gated where they mint and
+     * back-compat with deployments that have no A2A_SECRET (they return a
+     * clear 503 instead of minting).
+     */
+    disableMcpConnect?: boolean;
+    /** Canonical app id (e.g. `mail`) for the MCP connect server name. */
+    mcpConnectAppId?: string;
+    /** Human app name shown on the MCP connect page. */
+    mcpConnectAppName?: string;
+    /** Per-template override mapping deep-link params → client SPA path.
+     *  See `createOpenRouteHandler`. */
+    resolveOpenPath?: import("./open-route.js").OpenRouteOptions["resolveOpenPath"];
     /** Env key configuration. Enables env-status and env-vars routes. */
     envKeys?: EnvKeyConfig[];
     /**

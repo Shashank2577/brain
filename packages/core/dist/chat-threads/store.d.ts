@@ -32,6 +32,13 @@ export interface ChatThreadSummary {
     updatedAt: number;
     scope: ChatThreadScope | null;
 }
+export interface ForkThreadSourceSnapshot {
+    threadData: string;
+    title?: string;
+    preview?: string;
+    messageCount?: number;
+    scope?: ChatThreadScope | null;
+}
 export declare function createThread(ownerEmail: string, opts?: {
     id?: string;
     title?: string;
@@ -40,6 +47,7 @@ export declare function createThread(ownerEmail: string, opts?: {
 export declare function getThread(id: string): Promise<ChatThread | null>;
 export declare function forkThread(sourceId: string, ownerEmail: string, opts?: {
     id?: string;
+    source?: ForkThreadSourceSnapshot | null;
 }): Promise<ChatThread | null>;
 export interface ListThreadsOptions {
     limit?: number;

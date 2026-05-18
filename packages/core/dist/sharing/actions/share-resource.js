@@ -8,6 +8,7 @@ import { sendEmail, isEmailConfigured } from "../../server/email.js";
 import { renderEmail, emailStrong } from "../../server/email-template.js";
 import { getAppProductionUrl } from "../../server/app-url.js";
 import { getDbExec } from "../../db/client.js";
+import { getExtensionShareChangeTargets, notifyExtensionShareChanged, } from "./extension-change.js";
 export function isSyntheticQaEmail(email) {
     const trimmed = email.trim().toLowerCase();
     const at = trimmed.lastIndexOf("@");
@@ -142,6 +143,7 @@ export default defineAction({
         const actor = getRequestUserEmail();
         if (!actor)
             throw new ForbiddenError("Not signed in");
+        const beforeExtensionTargets = await getExtensionShareChangeTargets(args.resourceType, args.resourceId);
         if (reg.requireOrgMemberForUserShares) {
             const resourceOrgId = access.resource?.orgId;
             if (!resourceOrgId) {
@@ -173,6 +175,7 @@ export default defineAction({
                 .update(reg.sharesTable)
                 .set({ role: args.role })
                 .where(eq(reg.sharesTable.id, existing.id));
+            await notifyExtensionShareChanged(args.resourceType, args.resourceId, beforeExtensionTargets);
             return { id: existing.id, updated: true };
         }
         const id = nanoid();
@@ -185,6 +188,7 @@ export default defineAction({
             createdBy: actor,
             createdAt: new Date().toISOString(),
         });
+        await notifyExtensionShareChanged(args.resourceType, args.resourceId, beforeExtensionTargets);
         if (args.notify !== false &&
             args.principalType === "user" &&
             isEmailConfigured() &&

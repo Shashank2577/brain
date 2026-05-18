@@ -1,15 +1,17 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import React, { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle, } from "react";
-import { AssistantRuntimeProvider, useLocalRuntime, useThreadRuntime, useThread, useAui, useComposer, useComposerRuntime, useMessageRuntime, ThreadPrimitive, ComposerPrimitive, MessagePrimitive, } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useLocalRuntime, useThreadRuntime, useThread, useAui, useComposer, useComposerRuntime, useMessageRuntime, ThreadPrimitive, MessagePrimitive, } from "@assistant-ui/react";
 import { CompositeAttachmentAdapter } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { createAgentChatAdapter } from "./agent-chat-adapter.js";
+import { useAgentDynamicSuggestions, } from "./dynamic-suggestions.js";
 import { getActiveRun } from "./active-run-state.js";
 import { AgentAutoContinueSignal, readSSEStreamRaw, } from "./sse-event-processor.js";
 import { captureError } from "./analytics.js";
 import { cn } from "./utils.js";
+import { useNearBottomAutoscroll } from "./conversation/index.js";
 import { TextAttachmentAdapter } from "./composer/attachment-accept.js";
 import { AgentTaskCard } from "./AgentTaskCard.js";
 import { ConnectBuilderCard } from "./ConnectBuilderCard.js";
@@ -22,6 +24,7 @@ import { agentNativePath } from "./api-path.js";
 import { BUILDER_SPACE_SETTINGS_URL, NEW_CHAT_ACTION_HREF, } from "./error-format.js";
 import { ThumbsFeedback } from "./observability/ThumbsFeedback.js";
 import { TiptapComposer, } from "./composer/TiptapComposer.js";
+import { AgentComposerFrame } from "./composer/AgentComposerFrame.js";
 import { isPastedTextAttachmentName } from "./composer/pasted-text.js";
 import { PastedTextChip } from "./composer/PastedTextChip.js";
 import { IconMessage, IconX, IconPlayerStop, IconCheck, IconChevronDown, IconCopy, IconTerminal, IconLoader2, IconCircleX, IconSquareFilled, IconClock, IconFile, IconFolder, IconFileText, IconCheckbox, IconMail, IconUser, IconPresentation, IconStack2, IconMessageChatbot, IconLock, IconArrowBackUp, IconExternalLink, IconDots, IconGitFork, IconId, IconQuote, IconGauge, IconArrowRight, IconSettings, IconAlertTriangle, IconRefresh, IconPlayerPlay, IconClipboardList, IconSearch, IconArrowsMaximize, IconArrowsMinimize, IconPlus, } from "@tabler/icons-react";
@@ -286,7 +289,7 @@ const markdownStyles = `
 .agent-tool-code .agent-markdown-shiki pre span { background: transparent; }
 .agent-tool-code pre { margin: 0; min-width: max-content; padding: 0.75rem; background: transparent; color: inherit; }
 .agent-tool-code mark { border-radius: 0.1875rem; background: rgba(245, 158, 11, 0.25); color: inherit; }
-.agent-markdown hr { border: none; border-top: 1px solid hsl(var(--border, 0 0% 20%)); margin: 0.75em 0; }
+.agent-markdown hr { border: none; border-top: 1px solid hsl(var(--border, 0 0% 20%)); margin: 0.75em 0 1em; }
 .agent-markdown a { text-decoration: underline; text-underline-offset: 2px; }
 .agent-markdown a.agent-markdown-cta { text-decoration: none; }
 .agent-markdown blockquote { border-left: 2px solid hsl(var(--border, 0 0% 20%)); padding-left: 0.75em; margin: 0.5em 0; opacity: 0.8; }
@@ -934,7 +937,11 @@ function ToolCallDisplay({ toolName, argsText, args, result, isRunning, }) {
         try {
             const parsed = JSON.parse(result);
             if (parsed?.kind === "connect-builder-card") {
-                return (_jsx(ConnectBuilderCard, { configured: !!parsed.configured, builderEnabled: parsed.builderEnabled !== false, connectUrl: parsed.connectUrl || "", orgName: parsed.orgName ?? null, prompt: typeof parsed.prompt === "string" ? parsed.prompt : "" }));
+                return (_jsx(ConnectBuilderCard, { configured: !!parsed.configured, builderEnabled: parsed.builderEnabled !== false, 
+                    // Ignore saved cliAuthUrl values from older tool results. They
+                    // contain signed callback state and can expire while a chat sits
+                    // open; the card's hook fetches a fresh signed URL on mount/click.
+                    connectUrl: parsed.connectUrl || "", orgName: parsed.orgName ?? null, prompt: typeof parsed.prompt === "string" ? parsed.prompt : "" }));
             }
         }
         catch {
@@ -1087,6 +1094,74 @@ function UserMessageText({ text }) {
 }
 export function displayableUserMessageText(text) {
     return text.replace(/<context>[\s\S]*?<\/context>\n?/g, "").trim();
+}
+export function isAssistantUiStaleIndexError(error) {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    return /^tapClientLookup: Index \d+ out of bounds \(length: \d+\)$/.test(message);
+}
+export class AssistantUiStaleIndexErrorBoundary extends React.Component {
+    state = {
+        error: null,
+        retryToken: 0,
+    };
+    retryTimer = null;
+    static getDerivedStateFromError(error) {
+        return {
+            error: error instanceof Error ? error : new Error(String(error ?? "")),
+        };
+    }
+    componentDidCatch(error, info) {
+        if (!isAssistantUiStaleIndexError(error))
+            return;
+        captureError(error, {
+            tags: {
+                component: this.props.componentName ?? "AssistantChat",
+                recoverable: "assistant-ui-stale-message-index",
+            },
+            extra: {
+                resetKey: this.props.resetKey,
+                componentStack: info.componentStack,
+            },
+        });
+        if (this.retryTimer)
+            return;
+        this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            this.setState((state) => {
+                if (!state.error || !isAssistantUiStaleIndexError(state.error)) {
+                    return null;
+                }
+                return { error: null, retryToken: state.retryToken + 1 };
+            });
+        }, 0);
+    }
+    componentDidUpdate(prevProps) {
+        if (this.state.error &&
+            isAssistantUiStaleIndexError(this.state.error) &&
+            prevProps.resetKey !== this.props.resetKey) {
+            this.setState((state) => ({
+                error: null,
+                retryToken: state.retryToken + 1,
+            }));
+        }
+    }
+    componentWillUnmount() {
+        if (this.retryTimer) {
+            clearTimeout(this.retryTimer);
+        }
+    }
+    render() {
+        if (this.state.error) {
+            if (!isAssistantUiStaleIndexError(this.state.error)) {
+                throw this.state.error;
+            }
+            return null;
+        }
+        return (_jsx(React.Fragment, { children: this.props.children }, `${this.props.resetKey}:${this.state.retryToken}`));
+    }
+}
+export function AssistantMessageListErrorBoundary({ resetKey, children, }) {
+    return (_jsx(AssistantUiStaleIndexErrorBoundary, { resetKey: resetKey, componentName: "AssistantMessageList", children: children }));
 }
 function UserMessageAttachments() {
     const messageRuntime = useMessageRuntime();
@@ -1317,6 +1392,7 @@ function ThinkingIndicator({ label = "Thinking" } = {}) {
 // session. See packages/desktop-app/src/main/index.ts.
 function BuilderConnectCta({ variant = "primary", onConnected, }) {
     const { configured, orgName, connecting, error, start } = useBuilderConnectFlow({
+        trackingSource: "assistant_chat_builder_cta",
         onConnected,
     });
     const containerClass = variant === "compact"
@@ -1325,7 +1401,7 @@ function BuilderConnectCta({ variant = "primary", onConnected, }) {
     if (configured) {
         return (_jsxs("div", { className: containerClass, children: [_jsxs("div", { className: "min-w-0 flex-1", children: [_jsx("div", { className: "text-xs font-medium text-foreground", children: "Builder.io" }), _jsx("p", { className: "text-[11px] text-muted-foreground mt-0.5", children: orgName ? `Connected — ${orgName}` : "Connected" })] }), _jsxs("span", { className: "ml-auto inline-flex items-center gap-1 shrink-0 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500", children: [_jsx(IconCheck, { size: 10 }), "Connected"] })] }));
     }
-    return (_jsxs("div", { className: containerClass, children: [_jsxs("div", { className: "min-w-0 flex-1", children: [_jsx("div", { className: "text-xs font-medium text-foreground", children: "Connect Builder.io" }), _jsx("p", { className: "text-[11px] text-muted-foreground mt-0.5 max-w-[220px]", children: "Free credits for LLM, hosting, and more \u2014 no API key needed" }), error && _jsx("p", { className: "mt-1 text-[10px] text-destructive", children: error })] }), _jsx("button", { type: "button", onClick: start, disabled: connecting, className: "ml-auto inline-flex items-center gap-1 shrink-0 rounded-md bg-foreground px-3 py-1.5 text-[11px] font-medium no-underline text-background hover:opacity-90 disabled:opacity-60 disabled:cursor-wait", "aria-busy": connecting, children: connecting ? (_jsxs(_Fragment, { children: [_jsx(IconLoader2, { size: 10, className: "animate-spin" }), "Waiting\u2026"] })) : (_jsxs(_Fragment, { children: ["Connect", _jsx(IconExternalLink, { size: 10 })] })) })] }));
+    return (_jsxs("div", { className: containerClass, children: [_jsxs("div", { className: "min-w-0 flex-1", children: [_jsx("div", { className: "text-xs font-medium text-foreground", children: "Connect Builder.io" }), _jsx("p", { className: "text-[11px] text-muted-foreground mt-0.5 max-w-[220px]", children: "Free credits for LLM, hosting, and more \u2014 no API key needed" }), error && _jsx("p", { className: "mt-1 text-[10px] text-destructive", children: error })] }), _jsx("button", { type: "button", onClick: () => start(), disabled: connecting, className: "ml-auto inline-flex items-center gap-1 shrink-0 rounded-md bg-foreground px-3 py-1.5 text-[11px] font-medium no-underline text-background hover:opacity-90 disabled:opacity-60 disabled:cursor-wait", "aria-busy": connecting, children: connecting ? (_jsxs(_Fragment, { children: [_jsx(IconLoader2, { size: 10, className: "animate-spin" }), "Waiting\u2026"] })) : (_jsxs(_Fragment, { children: ["Connect", _jsx(IconExternalLink, { size: 10 })] })) })] }));
 }
 // ─── Builder Setup Card ─────────────────────────────────────────────────────
 function BuilderSetupCard({ onConnected, bouncePulse, }) {
@@ -1420,6 +1496,13 @@ function isProviderQueryRunError(info) {
         text.includes("unknown table") ||
         text.includes("type mismatch"));
 }
+function isConnectionRecoveryRunError(info) {
+    const code = (info.errorCode ?? "").toLowerCase();
+    const message = info.message.toLowerCase();
+    return (code === "connection_error" ||
+        message.includes("connection kept failing") ||
+        message.includes("automatic recovery attempts"));
+}
 function getMessageText(message) {
     const msg = message?.message ?? message;
     const content = msg?.content;
@@ -1435,9 +1518,18 @@ function getMessageText(message) {
 function RunErrorRecoveryCard({ info, onContinue, onRetry, onFork, onDismiss, }) {
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [forking, setForking] = useState(false);
+    const [forkError, setForkError] = useState(null);
+    const builderReconnect = useBuilderConnectFlow({
+        trackingSource: "assistant_chat_reconnect_error",
+    });
     const canRecover = info.recoverable === true;
     const shouldShowBuilderReconnect = isBuilderReconnectRunError(info);
+    const builderReconnectResolved = shouldShowBuilderReconnect &&
+        builderReconnect.hasFetchedStatus &&
+        builderReconnect.configured;
     const isQueryError = isProviderQueryRunError(info);
+    const isConnectionRecoveryError = isConnectionRecoveryRunError(info);
     const copyLabel = info.runId || info.errorCode || info.details ? "Copy debug" : "Copy";
     const copyDetails = useCallback(() => {
         const text = [
@@ -1452,9 +1544,38 @@ function RunErrorRecoveryCard({ info, onContinue, onRetry, onFork, onDismiss, })
         setCopied(true);
         setTimeout(() => setCopied(false), 1200);
     }, [info]);
+    const startNewChat = useCallback(() => {
+        window.dispatchEvent(new CustomEvent("agent-chat:new-chat"));
+        onDismiss();
+    }, [onDismiss]);
+    const handleFork = useCallback(async () => {
+        if (!onFork || forking)
+            return;
+        setForking(true);
+        setForkError(null);
+        try {
+            const result = await onFork();
+            if (result === false) {
+                setForkError("Could not fork this chat. Try starting a new chat.");
+            }
+        }
+        catch {
+            setForkError("Could not fork this chat. Try starting a new chat.");
+        }
+        finally {
+            setForking(false);
+        }
+    }, [forking, onFork]);
+    useEffect(() => {
+        if (builderReconnectResolved) {
+            onDismiss();
+        }
+    }, [builderReconnectResolved, onDismiss]);
     return (_jsxs("div", { className: "rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3 text-sm", children: [_jsxs("div", { className: "flex items-start gap-2", children: [_jsx("span", { className: "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300", children: _jsx(IconAlertTriangle, { size: 14 }) }), _jsxs("div", { className: "min-w-0 flex-1", children: [_jsx("div", { className: "font-medium text-foreground", children: canRecover
                                     ? "The agent stopped before finishing"
-                                    : "The agent hit an error" }), _jsx("p", { className: "mt-1 text-xs leading-relaxed text-muted-foreground", children: info.message }), shouldShowBuilderReconnect && (_jsx("p", { className: "mt-2 text-xs leading-relaxed text-muted-foreground", children: "The current Builder.io or model-provider credential was rejected. Reconnect Builder.io, then retry this message." })), (info.runId || info.errorCode || info.details) && (_jsxs("button", { type: "button", onClick: () => setDetailsOpen((v) => !v), className: "mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground", children: [_jsx(IconChevronDown, { size: 12, className: cn("transition-transform", detailsOpen && "rotate-180") }), "Details"] })), detailsOpen && (_jsxs("div", { className: "mt-2 rounded-md border border-border/60 bg-background/70 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground", children: [info.runId && _jsxs("div", { children: ["run: ", info.runId] }), info.errorCode && _jsxs("div", { children: ["code: ", info.errorCode] }), info.details && (_jsx("pre", { className: "mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words font-mono", children: info.details }))] }))] }), _jsx("button", { type: "button", onClick: onDismiss, "aria-label": "Dismiss", className: "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground", children: _jsx(IconX, { size: 14 }) })] }), _jsxs("div", { className: "mt-3 flex flex-wrap items-center gap-2", children: [shouldShowBuilderReconnect && (_jsxs("a", { href: agentNativePath("/_agent-native/builder/connect"), target: "_blank", rel: "noreferrer", className: "inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90", children: [_jsx(IconExternalLink, { size: 13 }), "Reconnect Builder.io"] })), canRecover && (_jsxs(_Fragment, { children: [_jsxs("button", { type: "button", onClick: onContinue, className: "inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90", children: [_jsx(IconPlayerPlay, { size: 13 }), "Continue"] }), _jsxs("button", { type: "button", onClick: onRetry, className: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-accent", children: [_jsx(IconRefresh, { size: 13 }), isQueryError ? "Diagnose and retry" : "Retry"] })] })), canRecover && onFork && (_jsxs("button", { type: "button", onClick: onFork, title: "Fork this conversation into a separate chat thread.", "aria-label": "Fork this conversation into a separate chat thread", className: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-accent", children: [_jsx(IconGitFork, { size: 13 }), "Fork chat"] })), _jsxs("button", { type: "button", onClick: copyDetails, className: "ml-auto inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground hover:bg-background/80 hover:text-foreground", children: [copied ? _jsx(IconCheck, { size: 13 }) : _jsx(IconCopy, { size: 13 }), copied ? "Copied" : copyLabel] })] })] }));
+                                    : "The agent hit an error" }), _jsx("p", { className: "mt-1 text-xs leading-relaxed text-muted-foreground", children: info.message }), shouldShowBuilderReconnect && !builderReconnectResolved && (_jsx("p", { className: "mt-2 text-xs leading-relaxed text-muted-foreground", children: "The current Builder.io or model-provider credential was rejected. Reconnect Builder.io, then retry this message." })), isConnectionRecoveryError && (_jsx("p", { className: "mt-2 text-xs leading-relaxed text-muted-foreground", children: "If retry lands on the same error, start a new chat session and continue from what already changed." })), (info.runId || info.errorCode || info.details) && (_jsxs("button", { type: "button", onClick: () => setDetailsOpen((v) => !v), className: "mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground", children: [_jsx(IconChevronDown, { size: 12, className: cn("transition-transform", detailsOpen && "rotate-180") }), "Details"] })), detailsOpen && (_jsxs("div", { className: "mt-2 rounded-md border border-border/60 bg-background/70 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground", children: [info.runId && _jsxs("div", { children: ["run: ", info.runId] }), info.errorCode && _jsxs("div", { children: ["code: ", info.errorCode] }), info.details && (_jsx("pre", { className: "mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words font-mono", children: info.details }))] }))] }), _jsx("button", { type: "button", onClick: onDismiss, "aria-label": "Dismiss", className: "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground", children: _jsx(IconX, { size: 14 }) })] }), _jsxs("div", { className: "mt-3 flex flex-wrap items-center gap-2", children: [shouldShowBuilderReconnect && !builderReconnectResolved && (_jsxs("button", { type: "button", onClick: () => builderReconnect.start(), disabled: builderReconnect.connecting, className: "inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90 disabled:cursor-wait disabled:opacity-70", children: [builderReconnect.connecting ? (_jsx(IconLoader2, { size: 13, className: "animate-spin" })) : (_jsx(IconExternalLink, { size: 13 })), builderReconnect.connecting
+                                ? "Connecting Builder.io"
+                                : "Reconnect Builder.io"] })), canRecover && (_jsxs(_Fragment, { children: [_jsxs("button", { type: "button", onClick: onContinue, className: "inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90", children: [_jsx(IconPlayerPlay, { size: 13 }), "Continue"] }), _jsxs("button", { type: "button", onClick: onRetry, className: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-accent", children: [_jsx(IconRefresh, { size: 13 }), isQueryError ? "Diagnose and retry" : "Retry"] })] })), canRecover && isConnectionRecoveryError && (_jsxs("button", { type: "button", onClick: startNewChat, className: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-accent", children: [_jsx(IconPlus, { size: 13 }), "New chat"] })), canRecover && onFork && !isConnectionRecoveryError && (_jsxs("button", { type: "button", onClick: handleFork, disabled: forking, title: "Fork this conversation into a separate chat thread.", "aria-label": "Fork this conversation into a separate chat thread", className: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-accent disabled:cursor-wait disabled:opacity-70", children: [forking ? (_jsx(IconLoader2, { size: 13, className: "animate-spin" })) : (_jsx(IconGitFork, { size: 13 })), forking ? "Forking..." : "Fork chat"] })), _jsxs("button", { type: "button", onClick: copyDetails, className: "ml-auto inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground hover:bg-background/80 hover:text-foreground", children: [copied ? _jsx(IconCheck, { size: 13 }) : _jsx(IconCopy, { size: 13 }), copied ? "Copied" : copyLabel] })] }), shouldShowBuilderReconnect && builderReconnect.error && (_jsx("p", { className: "mt-2 text-xs leading-relaxed text-red-500", children: builderReconnect.error })), forkError && (_jsx("p", { className: "mt-2 text-xs leading-relaxed text-red-500", children: forkError }))] }));
 }
 function LoopLimitContinueCard({ info, onContinue, }) {
     const [settings, setSettings] = useState(null);
@@ -1593,13 +1714,20 @@ function ensureMessageMetadata(repo) {
 // Re-export for backwards compatibility
 import { extractThreadMeta, normalizeThreadRepository, } from "../agent/thread-data-builder.js";
 export { extractThreadMeta };
-const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateText, suggestions, emptyStateAddon, showHeader = true, onSwitchToCli, className, apiUrl, tabId, threadId, onMessageCountChange, onSaveThread, onGenerateTitle, composerSlot, composerDisabled = false, composerDisabledPlaceholder, isNewThread, onSlashCommand, execMode, onExecModeChange, planModeDisabled, planModeDisabledReason, selectedModel, defaultModel, selectedEngine, selectedEffort, availableModels, onModelChange, onEffortChange, onForkChat, }, ref) {
-    const scrollRef = useRef(null);
+const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateText, suggestions, dynamicSuggestions, emptyStateAddon, showHeader = true, onSwitchToCli, className, apiUrl, tabId, browserTabId, threadId, contextScope, onMessageCountChange, onSaveThread, onGenerateTitle, composerSlot, composerAreaClassName, composerToolbarSlot, composerExtraActionButton, composerDisabled = false, composerDisabledPlaceholder, isNewThread, onSlashCommand, execMode, onExecModeChange, planModeDisabled, planModeDisabledReason, selectedModel, defaultModel, selectedEngine, selectedEffort, availableModels, onModelChange, onEffortChange, onForkChat, onConnectProvider, plusMenuMode = "full", providerStatusChecksEnabled = true, loadHistoryRepository, historyReloadKey, }, ref) {
     const thread = useThread();
     const threadRuntime = useThreadRuntime();
     const composerRuntime = useComposerRuntime();
     const isRuntimeRunning = thread.isRunning;
     const messages = thread.messages;
+    const resolvedSuggestions = useAgentDynamicSuggestions({
+        staticSuggestions: suggestions,
+        dynamicSuggestions,
+        browserTabId,
+        scope: contextScope,
+        enabled: messages.length === 0,
+    });
+    const messageListResetKey = useMemo(() => messages.map((message) => message.id).join("|"), [messages]);
     // Chat-wide drag-and-drop: users expect to drop a file anywhere on the agent
     // sidebar (thread, header, composer) and have it attach — same as ChatGPT,
     // Claude.ai, Linear, Slack, etc. Tiptap's own `handleDrop` only fires inside
@@ -1738,7 +1866,7 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
     }, [isRunning, tabId, threadId]);
     // ─── Chat persistence ──────────────────────────────────────────────
     const hasRestoredRef = useRef(false);
-    const [isRestoring, setIsRestoring] = useState(!!threadId && !isNewThread);
+    const [isRestoring, setIsRestoring] = useState(!!(threadId || loadHistoryRepository) && !isNewThread);
     const onSaveThreadRef = useRef(onSaveThread);
     onSaveThreadRef.current = onSaveThread;
     const onGenerateTitleRef = useRef(onGenerateTitle);
@@ -1768,6 +1896,17 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
         return repo;
     }, [threadRuntime]);
     const refreshThreadFromServer = useCallback(async () => {
+        if (loadHistoryRepository) {
+            try {
+                const repo = await loadHistoryRepository();
+                if (!repo)
+                    return null;
+                return importThreadData(repo);
+            }
+            catch {
+                return null;
+            }
+        }
         if (!threadId)
             return null;
         try {
@@ -1782,7 +1921,7 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
         catch {
             return null;
         }
-    }, [apiUrl, importThreadData, threadId]);
+    }, [apiUrl, importThreadData, loadHistoryRepository, threadId]);
     const wasRecentlyStoppedRun = useCallback((runId) => {
         const stopped = userStoppedRunRef.current;
         return Boolean(stopped &&
@@ -1969,7 +2108,24 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
         if (hasRestoredRef.current)
             return;
         hasRestoredRef.current = true;
-        if (threadId) {
+        if (loadHistoryRepository) {
+            (async () => {
+                try {
+                    const repo = await loadHistoryRepository();
+                    if (repo) {
+                        importThreadData(repo, { markTitleGenerated: true });
+                    }
+                    titleGeneratedRef.current = true;
+                }
+                catch {
+                    // Start fresh
+                }
+                finally {
+                    setIsRestoring(false);
+                }
+            })();
+        }
+        else if (threadId) {
             (async () => {
                 try {
                     const res = await fetch(`${apiUrl}/threads/${encodeURIComponent(threadId)}`);
@@ -2017,6 +2173,32 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
         threadRuntime,
         importThreadData,
         reconnectActiveRunForThread,
+        loadHistoryRepository,
+    ]);
+    useEffect(() => {
+        if (!loadHistoryRepository ||
+            !hasRestoredRef.current ||
+            isRestoring ||
+            isRunning) {
+            return;
+        }
+        let cancelled = false;
+        void loadHistoryRepository()
+            .then((repo) => {
+            if (cancelled || !repo)
+                return;
+            importThreadData(repo, { markTitleGenerated: true });
+        })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        historyReloadKey,
+        importThreadData,
+        isRestoring,
+        isRunning,
+        loadHistoryRepository,
     ]);
     // If assistant-ui stops the local runtime while the background server run is
     // still alive, immediately switch into the same reconnect path used after a
@@ -2183,6 +2365,10 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
     // Check on mount and whenever SettingsPanel dispatches
     // `agent-engine:configured-changed` so the gate flips live without reload.
     useEffect(() => {
+        if (!providerStatusChecksEnabled) {
+            setMissingApiKey(false);
+            return;
+        }
         let cancelled = false;
         const check = async () => {
             const [envKeys, builderStatus, engineStatus] = await Promise.all([
@@ -2216,7 +2402,7 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
             cancelled = true;
             window.removeEventListener("agent-engine:configured-changed", check);
         };
-    }, []);
+    }, [providerStatusChecksEnabled]);
     // Listen for auth error events from the adapter
     const checkAuthSession = useCallback(async () => {
         try {
@@ -2432,7 +2618,7 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
             setForceStopped(false);
         }
     }, [isReconnecting, forceStopped]);
-    const addToQueue = useCallback(async (text, images, references, attachments, requestMode) => {
+    const addToQueue = useCallback(async (text, images, references, attachments, requestMode, intent = "queued") => {
         setShowContinue(false);
         setLoopLimitInfo(null);
         setRunErrorInfo(null);
@@ -2448,8 +2634,7 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
         // user had scrolled up to read history. The sticky-bottom override
         // exists to stop streaming from yanking the viewport, not to swallow
         // direct sends.
-        isNearBottomRef.current = true;
-        setShowScrollToBottom(false);
+        markNearBottom();
         const queuedAttachments = await serializeQueuedAttachments(attachments);
         // Snapshot the exec mode at enqueue time when the caller didn't
         // pass an explicit override. Without this, a plan-mode message that
@@ -2461,7 +2646,7 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
                 : execMode === "build"
                     ? "act"
                     : undefined);
-        if (isRunning) {
+        if (isRunning && intent === "queued") {
             setQueuedMessages((prev) => [
                 ...prev,
                 {
@@ -2507,41 +2692,23 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
         focusComposer() {
             tiptapRef.current?.focus();
         },
-    }), [addToQueue, thread.isRunning]);
-    // Track whether user has scrolled away from bottom
-    const isNearBottomRef = useRef(true);
-    const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-    useEffect(() => {
-        const el = scrollRef.current;
-        if (!el)
-            return;
-        function onScroll() {
-            if (!el)
-                return;
-            const threshold = 40;
-            const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-            isNearBottomRef.current = nearBottom;
-            setShowScrollToBottom(!nearBottom && messages.length > 0);
-        }
-        el.addEventListener("scroll", onScroll, { passive: true });
-        return () => el.removeEventListener("scroll", onScroll);
-    }, [messages.length]);
-    const scrollToBottom = useCallback(() => {
-        const el = scrollRef.current;
-        if (el) {
-            el.scrollTop = el.scrollHeight;
-            isNearBottomRef.current = true;
-            setShowScrollToBottom(false);
-        }
-    }, []);
-    const scrollToBottomAfterPaint = useCallback(() => {
-        scrollToBottom();
-        requestAnimationFrame(() => {
-            scrollToBottom();
-            requestAnimationFrame(scrollToBottom);
-        });
-        setTimeout(scrollToBottom, 80);
-    }, [scrollToBottom]);
+        exportThreadSnapshot() {
+            if (messages.length === 0)
+                return null;
+            const repo = threadRuntime.export();
+            const { title, preview } = extractThreadMeta(repo);
+            return {
+                threadData: JSON.stringify(repo),
+                title,
+                preview,
+                messageCount: messages.length,
+            };
+        },
+    }), [addToQueue, messages.length, thread.isRunning, threadRuntime]);
+    const { scrollRef, isNearBottomRef, showScrollToBottom, markNearBottom, scrollToBottom, scrollToBottomAfterPaint, } = useNearBottomAutoscroll({
+        followKey: [messages, queuedMessages],
+        streaming: isRunning,
+    });
     const scrollToBottomWhileLayoutSettles = useCallback(() => {
         scrollToBottomAfterPaint();
         const el = scrollRef.current;
@@ -2573,32 +2740,11 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
             return scrollToBottomWhileLayoutSettles();
         }
     }, [isRestoring, scrollToBottomWhileLayoutSettles]);
-    // Auto-scroll on new messages or queued messages (only if near bottom)
-    useEffect(() => {
-        const el = scrollRef.current;
-        if (el && isNearBottomRef.current) {
-            scrollToBottomAfterPaint();
-        }
-    }, [messages, queuedMessages, scrollToBottomAfterPaint]);
     useEffect(() => {
         if (!isRunning && isNearBottomRef.current) {
             scrollToBottomAfterPaint();
         }
     }, [isRunning, scrollToBottomAfterPaint]);
-    // Continuous auto-scroll while streaming (only if near bottom)
-    useEffect(() => {
-        if (!isRunning)
-            return;
-        const el = scrollRef.current;
-        if (!el)
-            return;
-        const interval = setInterval(() => {
-            if (isNearBottomRef.current) {
-                el.scrollTop = el.scrollHeight;
-            }
-        }, 100);
-        return () => clearInterval(interval);
-    }, [isRunning]);
     const { isDevMode: cpDevMode } = useDevMode(apiUrl);
     const checkpointCtx = useMemo(() => ({ apiUrl, devMode: cpDevMode, threadId }), [apiUrl, cpDevMode, threadId]);
     const messageActionsCtx = useMemo(() => ({ onForkChat }), [onForkChat]);
@@ -2678,15 +2824,15 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
                                                     window.location.reload();
                                                 }, className: authSessionAvailable
                                                     ? "text-xs text-background bg-foreground hover:opacity-90 px-3 py-1.5 rounded-md"
-                                                    : "text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md border border-border hover:bg-accent", children: "Refresh chat" })] })] })) : missingApiKey && messages.length === 0 ? (_jsx("div", { className: "flex flex-col items-center justify-center h-full px-2", children: _jsx(BuilderSetupCard, { onConnected: handleBuilderConnected, bouncePulse: missingKeyBouncePulse }) })) : isRestoring ? (_jsxs("div", { className: "flex flex-col gap-3 p-4", children: [_jsx("div", { className: "flex justify-end", children: _jsx("div", { className: "h-8 w-32 rounded-lg bg-muted animate-pulse" }) }), _jsxs("div", { className: "flex flex-col gap-1.5", children: [_jsx("div", { className: "h-4 w-48 rounded bg-muted animate-pulse" }), _jsx("div", { className: "h-4 w-64 rounded bg-muted animate-pulse" }), _jsx("div", { className: "h-4 w-40 rounded bg-muted animate-pulse" })] })] })) : messages.length === 0 && !isReconnecting ? (_jsxs("div", { className: "flex flex-col items-center justify-center gap-4 py-16 px-4 h-full", children: [_jsx("div", { className: "flex h-10 w-10 items-center justify-center rounded-full bg-muted", children: _jsx(IconMessage, { className: "h-5 w-5 text-muted-foreground" }) }), _jsx("p", { className: "text-sm text-muted-foreground text-center max-w-[240px]", children: emptyStateText ?? "How can I help you?" }), emptyStateAddon, suggestions && suggestions.length > 0 && (_jsx("div", { className: "flex flex-col gap-1.5 w-full max-w-[280px]", children: suggestions.map((suggestion) => (_jsx("button", { onClick: () => {
+                                                    : "text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md border border-border hover:bg-accent", children: "Refresh chat" })] })] })) : missingApiKey && messages.length === 0 ? (_jsx("div", { className: "flex flex-col items-center justify-center h-full px-2", children: _jsx(BuilderSetupCard, { onConnected: handleBuilderConnected, bouncePulse: missingKeyBouncePulse }) })) : isRestoring ? (_jsxs("div", { className: "flex flex-col gap-3 p-4", children: [_jsx("div", { className: "flex justify-end", children: _jsx("div", { className: "h-8 w-32 rounded-lg bg-muted animate-pulse" }) }), _jsxs("div", { className: "flex flex-col gap-1.5", children: [_jsx("div", { className: "h-4 w-48 rounded bg-muted animate-pulse" }), _jsx("div", { className: "h-4 w-64 rounded bg-muted animate-pulse" }), _jsx("div", { className: "h-4 w-40 rounded bg-muted animate-pulse" })] })] })) : messages.length === 0 && !isReconnecting ? (_jsxs("div", { className: "flex flex-col items-center justify-center gap-4 py-16 px-4 h-full", children: [_jsx("div", { className: "flex h-10 w-10 items-center justify-center rounded-full bg-muted", children: _jsx(IconMessage, { className: "h-5 w-5 text-muted-foreground" }) }), _jsx("p", { className: "text-sm text-muted-foreground text-center max-w-[240px]", children: emptyStateText ?? "How can I help you?" }), emptyStateAddon, resolvedSuggestions && resolvedSuggestions.length > 0 && (_jsx("div", { className: "flex flex-col gap-1.5 w-full max-w-[280px]", children: resolvedSuggestions.map((suggestion) => (_jsx("button", { onClick: () => {
                                                 threadRuntime.append({
                                                     role: "user",
                                                     content: [{ type: "text", text: suggestion }],
                                                 });
-                                            }, className: "w-full rounded-lg border border-border px-3 py-2 text-left text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground", children: suggestion }, suggestion))) }))] })) : (_jsxs("div", { className: "agent-thread-content flex flex-col gap-4 px-4 py-4", children: [_jsx(ThreadPrimitive.Messages, { components: {
-                                            UserMessage,
-                                            AssistantMessage,
-                                        } }), missingApiKey && (_jsx(BuilderSetupCard, { onConnected: handleBuilderConnected, bouncePulse: missingKeyBouncePulse })), visibleLoopLimit && !showRunningInUI && (_jsx(LoopLimitContinueCard, { info: visibleLoopLimit, onContinue: () => {
+                                            }, className: "w-full rounded-lg border border-border px-3 py-2 text-left text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground", children: suggestion }, suggestion))) }))] })) : (_jsxs("div", { className: "agent-thread-content flex flex-col gap-4 px-4 py-4", children: [_jsx(AssistantMessageListErrorBoundary, { resetKey: messageListResetKey, children: _jsx(ThreadPrimitive.Messages, { components: {
+                                                UserMessage,
+                                                AssistantMessage,
+                                            } }) }), missingApiKey && (_jsx(BuilderSetupCard, { onConnected: handleBuilderConnected, bouncePulse: missingKeyBouncePulse })), visibleLoopLimit && !showRunningInUI && (_jsx(LoopLimitContinueCard, { info: visibleLoopLimit, onContinue: () => {
                                             setShowContinue(false);
                                             setLoopLimitInfo(null);
                                             addToQueue("Continue from where you left off.");
@@ -2711,54 +2857,54 @@ const AssistantChatInner = forwardRef(function AssistantChatInner({ emptyStateTe
                                             .replace(/<context>[\s\S]*?<\/context>\n?/g, "")
                                             .trim();
                                         return (_jsx("div", { className: "flex justify-end group", children: _jsxs("div", { className: "relative max-w-[85%] rounded-lg bg-accent/50 text-foreground/60 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words", children: [_jsxs("div", { className: "flex items-center gap-1.5 text-[10px] text-muted-foreground mb-1 font-medium uppercase tracking-wide", children: [_jsx(IconClock, { className: "h-3 w-3" }), "Queued"] }), displayText, msg.images && msg.images.length > 0 && (_jsx("div", { className: "flex flex-wrap gap-1.5 mt-1.5", children: msg.images.map((img, j) => (_jsx("img", { src: img, alt: "", className: "h-12 w-12 rounded object-cover border border-border/50" }, j))) })), _jsx("button", { type: "button", onClick: () => setQueuedMessages((prev) => prev.filter((m) => m.id !== msg.id)), "aria-label": "Remove from queue", className: "absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-accent shadow-sm", children: _jsx(IconX, { className: "h-3 w-3" }) })] }) }, msg.id));
-                                    })] })) }), showScrollToBottom && (_jsx("div", { className: "shrink-0 flex justify-center -mb-1", children: _jsx("button", { type: "button", onClick: scrollToBottom, className: "flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent", "aria-label": "Scroll to bottom", children: _jsx(IconChevronDown, { className: "h-3.5 w-3.5 text-muted-foreground" }) }) })), composerSlot, showPlanModeCallout && (_jsx(PlanModeCallout, { canImplementPlan: canImplementPlan, onImplementPlan: handleImplementPlan, onSwitchToAct: handleSwitchToAct })), _jsx(SelectionAttachedPill, {}), _jsx("div", { className: cn("agent-composer-area shrink-0 px-3 py-2", missingApiKey && "cursor-pointer", isComposerDisabled && "opacity-70"), onClick: missingApiKey
+                                    })] })) }), showScrollToBottom && (_jsx("div", { className: "shrink-0 flex justify-center -mb-1", children: _jsx("button", { type: "button", onClick: scrollToBottom, className: "flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent", "aria-label": "Scroll to bottom", children: _jsx(IconChevronDown, { className: "h-3.5 w-3.5 text-muted-foreground" }) }) })), composerSlot, showPlanModeCallout && (_jsx(PlanModeCallout, { canImplementPlan: canImplementPlan, onImplementPlan: handleImplementPlan, onSwitchToAct: handleSwitchToAct })), _jsx(SelectionAttachedPill, {}), _jsxs(AgentComposerFrame, { className: cn(composerAreaClassName, missingApiKey && "cursor-pointer", isComposerDisabled && "opacity-70"), onClick: missingApiKey
                                 ? () => setMissingKeyBouncePulse((p) => p + 1)
-                                : undefined, children: _jsxs(ComposerPrimitive.Root, { className: "flex flex-col rounded-lg border border-input bg-background focus-within:ring-1 focus-within:ring-ring", children: [_jsx(ComposerAttachmentPreviewStrip, {}), _jsx(TiptapComposer, { focusRef: tiptapRef, disabled: isComposerDisabled, placeholder: missingApiKey
-                                            ? "Connect an AI engine above to start chatting…"
-                                            : composerDisabled
-                                                ? (composerDisabledPlaceholder ??
-                                                    "Open Desktop to use this chat.")
-                                                : isRunning
-                                                    ? queuedMessages.length > 0
-                                                        ? `${queuedMessages.length} queued — type another...`
-                                                        : "Queue a message..."
-                                                    : undefined, onSubmit: isRunning
-                                            ? (text, references, attachments) => void addToQueue(text, undefined, references.length > 0 ? references : undefined, attachments)
-                                            : undefined, onSlashCommand: onSlashCommand, execMode: execMode, onExecModeChange: onExecModeChange, planModeDisabled: planModeDisabled, planModeDisabledReason: planModeDisabledReason, selectedModel: selectedModel ?? defaultModel, selectedEffort: selectedEffort, availableModels: availableModels, onModelChange: onModelChange, onEffortChange: onEffortChange, draftScope: threadId || tabId, interceptBuildRequestsForBuilder: true, extraActionButton: showRunningInUI ? (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { type: "button", onClick: () => {
-                                                            // Nuclear stop: flip forceStopped so isRunning is false
-                                                            // immediately. This unblocks submission even if the
-                                                            // runtime or reconnect state is stuck.
-                                                            setForceStopped(true);
-                                                            const activeRun = getActiveRun();
-                                                            const runIdToAbort = reconnectRunIdRef.current ?? activeRun?.runId;
-                                                            userStoppedRunRef.current = {
-                                                                at: Date.now(),
-                                                                ...(runIdToAbort
-                                                                    ? { runId: runIdToAbort }
-                                                                    : {}),
-                                                            };
-                                                            setRunErrorInfo(null);
-                                                            setDismissedRunErrorKey(null);
-                                                            if (runIdToAbort) {
-                                                                fetch(`${apiUrl}/runs/${encodeURIComponent(runIdToAbort)}/abort`, { method: "POST" }).catch(() => { });
-                                                            }
-                                                            if (isReconnecting) {
-                                                                reconnectAbortRef.current?.abort();
-                                                                reconnectAbortRef.current = null;
-                                                                reconnectRunIdRef.current = null;
-                                                                setIsReconnecting(false);
-                                                                setReconnectFrozen(reconnectContent.length > 0);
-                                                            }
-                                                            threadRuntime.cancelRun();
-                                                            window.dispatchEvent(new CustomEvent("agentNative.chatRunning", {
-                                                                detail: {
-                                                                    isRunning: false,
-                                                                    tabId: tabId || threadId,
-                                                                },
-                                                            }));
-                                                        }, className: "shrink-0 flex h-7 w-7 items-center justify-center rounded-md bg-muted text-foreground hover:bg-muted/80", children: _jsx(IconPlayerStop, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Stop generating" })] })) : undefined })] }) })] }) }) }) }));
+                                : undefined, children: [_jsx(ComposerAttachmentPreviewStrip, {}), _jsx(TiptapComposer, { focusRef: tiptapRef, disabled: isComposerDisabled, placeholder: missingApiKey
+                                        ? "Connect an AI engine above to start chatting…"
+                                        : composerDisabled
+                                            ? (composerDisabledPlaceholder ??
+                                                "Open Desktop to use this chat.")
+                                            : isRunning
+                                                ? queuedMessages.length > 0
+                                                    ? `${queuedMessages.length} queued — send a follow-up...`
+                                                    : "Send a follow-up..."
+                                                : undefined, onSubmit: isRunning
+                                        ? (text, references, attachments, options) => void addToQueue(text, undefined, references.length > 0 ? references : undefined, attachments, undefined, options?.intent ?? "immediate")
+                                        : undefined, onSlashCommand: onSlashCommand, execMode: execMode, onExecModeChange: onExecModeChange, planModeDisabled: planModeDisabled, planModeDisabledReason: planModeDisabledReason, selectedModel: selectedModel ?? defaultModel, selectedEffort: selectedEffort, availableModels: availableModels, onModelChange: onModelChange, onEffortChange: onEffortChange, onConnectProvider: onConnectProvider, toolbarSlot: composerToolbarSlot, plusMenuMode: plusMenuMode, providerConnectStatusEnabled: providerStatusChecksEnabled, draftScope: threadId || tabId, interceptBuildRequestsForBuilder: true, extraActionButton: composerExtraActionButton || showRunningInUI ? (_jsxs(_Fragment, { children: [composerExtraActionButton, showRunningInUI && (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { type: "button", onClick: () => {
+                                                                // Nuclear stop: flip forceStopped so isRunning is false
+                                                                // immediately. This unblocks submission even if the
+                                                                // runtime or reconnect state is stuck.
+                                                                setForceStopped(true);
+                                                                const activeRun = getActiveRun();
+                                                                const runIdToAbort = reconnectRunIdRef.current ?? activeRun?.runId;
+                                                                userStoppedRunRef.current = {
+                                                                    at: Date.now(),
+                                                                    ...(runIdToAbort
+                                                                        ? { runId: runIdToAbort }
+                                                                        : {}),
+                                                                };
+                                                                setRunErrorInfo(null);
+                                                                setDismissedRunErrorKey(null);
+                                                                if (runIdToAbort) {
+                                                                    fetch(`${apiUrl}/runs/${encodeURIComponent(runIdToAbort)}/abort`, { method: "POST" }).catch(() => { });
+                                                                }
+                                                                if (isReconnecting) {
+                                                                    reconnectAbortRef.current?.abort();
+                                                                    reconnectAbortRef.current = null;
+                                                                    reconnectRunIdRef.current = null;
+                                                                    setIsReconnecting(false);
+                                                                    setReconnectFrozen(reconnectContent.length > 0);
+                                                                }
+                                                                threadRuntime.cancelRun();
+                                                                window.dispatchEvent(new CustomEvent("agentNative.chatRunning", {
+                                                                    detail: {
+                                                                        isRunning: false,
+                                                                        tabId: tabId || threadId,
+                                                                    },
+                                                                }));
+                                                            }, className: "shrink-0 flex h-7 w-7 items-center justify-center rounded-md bg-muted text-foreground hover:bg-muted/80", children: _jsx(IconPlayerStop, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Stop generating" })] }))] })) : undefined })] })] }) }) }) }));
 });
-export const AssistantChat = forwardRef(function AssistantChat({ apiUrl = agentNativePath("/_agent-native/agent-chat"), tabId, threadId, ...props }, ref) {
+export const AssistantChat = forwardRef(function AssistantChat({ apiUrl = agentNativePath("/_agent-native/agent-chat"), tabId, browserTabId, threadId, contextScope, ...props }, ref) {
     const modelRef = useRef(props.selectedModel);
     modelRef.current = props.selectedModel;
     const engineRef = useRef(props.selectedEngine);
@@ -2767,15 +2913,31 @@ export const AssistantChat = forwardRef(function AssistantChat({ apiUrl = agentN
     effortRef.current = props.selectedEffort;
     const execModeRef = useRef(props.execMode);
     execModeRef.current = props.execMode;
-    const adapter = useMemo(() => createAgentChatAdapter({
-        apiUrl,
-        tabId,
-        threadId,
-        modelRef,
-        engineRef,
-        effortRef,
-        execModeRef,
-    }), [apiUrl, tabId, threadId]);
+    const scopeRef = useRef(contextScope);
+    scopeRef.current = contextScope;
+    const createAdapterRef = useRef(props.createAdapter);
+    createAdapterRef.current = props.createAdapter;
+    const adapter = useMemo(() => {
+        const context = {
+            apiUrl,
+            tabId,
+            threadId,
+            modelRef,
+            engineRef,
+            effortRef,
+            execModeRef,
+            browserTabId,
+            scopeRef,
+        };
+        const createAdapter = createAdapterRef.current;
+        return createAdapter
+            ? createAdapter(context)
+            : createAgentChatAdapter(context);
+    }, 
+    // Adapter factories must be memoized and use refs for changing values.
+    // `adapterReloadKey` is an explicit opt-in for embedded hosts whose
+    // transport identity can change without changing tab/thread ids.
+    [apiUrl, tabId, threadId, browserTabId, props.adapterReloadKey]);
     const attachmentAdapter = useMemo(() => new CompositeAttachmentAdapter([
         new DownscalingImageAttachmentAdapter(),
         new BinaryDocumentAttachmentAdapter(),
@@ -2784,6 +2946,6 @@ export const AssistantChat = forwardRef(function AssistantChat({ apiUrl = agentN
     const runtime = useLocalRuntime(adapter, {
         adapters: { attachments: attachmentAdapter },
     });
-    return (_jsx(AssistantRuntimeProvider, { runtime: runtime, children: _jsx(ThreadPrimitive.Root, { className: "flex flex-1 flex-col h-full min-h-0 overflow-x-hidden", children: _jsx(AssistantChatInner, { ref: ref, ...props, apiUrl: apiUrl, tabId: tabId, threadId: threadId }) }) }));
+    return (_jsx(AssistantRuntimeProvider, { runtime: runtime, children: _jsx(TooltipProvider, { delayDuration: 200, children: _jsx(ThreadPrimitive.Root, { className: "flex flex-1 flex-col h-full min-h-0 overflow-x-hidden", children: _jsx(AssistantUiStaleIndexErrorBoundary, { resetKey: `${tabId ?? ""}:${threadId ?? ""}`, componentName: "AssistantChat", children: _jsx(AssistantChatInner, { ref: ref, ...props, browserTabId: browserTabId, contextScope: contextScope, apiUrl: apiUrl, tabId: tabId, threadId: threadId }) }) }) }) }));
 });
 //# sourceMappingURL=AssistantChat.js.map

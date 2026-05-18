@@ -511,7 +511,7 @@ export declare const teamShares: import("drizzle-orm/sqlite-core").SQLiteTableWi
             tableName: string;
             dataType: "string";
             columnType: "SQLiteText";
-            data: "viewer" | "editor" | "admin";
+            data: "admin" | "viewer" | "editor";
             driverParam: string;
             notNull: true;
             hasDefault: true;

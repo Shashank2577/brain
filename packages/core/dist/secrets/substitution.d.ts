@@ -29,6 +29,12 @@ export interface ResolveKeyReferencesResult {
     resolved: string;
     usedKeys: string[];
     secretValues: string[];
+    resolvedKeys?: ResolvedKeyReference[];
+}
+export interface ResolvedKeyReference {
+    name: string;
+    scope: SecretScope;
+    scopeId: string;
 }
 /**
  * Resolve `${keys.NAME}` references in `text`. For each reference, looks up
@@ -38,6 +44,17 @@ export interface ResolveKeyReferencesResult {
  * literal placeholder.
  */
 export declare function resolveKeyReferences(text: string, scope: SecretScope, scopeId: string): Promise<ResolveKeyReferencesResult>;
+/**
+ * Resolve `${keys.NAME}` for browser extension fetches and other request-bound
+ * code paths that should honor the active workspace's shared credential store.
+ *
+ * Lookup order:
+ * 1. user scope for personal overrides
+ * 2. active org scope (Dispatch vault sync writes here for org workspaces)
+ * 3. active org workspace scope (legacy shared rows)
+ * 4. solo workspace scope when no org is active
+ */
+export declare function resolveKeyReferencesWithRequestScopes(text: string, userScopeId: string): Promise<ResolveKeyReferencesResult>;
 /**
  * Check if a URL is allowed by a key's URL allowlist. Returns true when no
  * allowlist is configured (permissive default — the allowlist is opt-in).
@@ -58,4 +75,5 @@ export declare function validateUrlAllowlist(url: string, allowlist: string[] | 
  * would refuse — keep them aligned.
  */
 export declare function getKeyAllowlist(name: string, scope: SecretScope, scopeId: string): Promise<string[] | null>;
+export declare function getResolvedKeyAllowlist(ref: ResolvedKeyReference): Promise<string[] | null>;
 //# sourceMappingURL=substitution.d.ts.map

@@ -101,6 +101,32 @@ export declare function getDestinationById(destinationId: string, ctx?: Dispatch
     createdAt: number;
     updatedAt: number;
 }>;
+export declare function createApprovalRequest(input: {
+    changeType: string;
+    targetType: string;
+    targetId?: string | null;
+    summary: string;
+    payload: unknown;
+    beforeValue?: unknown;
+    afterValue?: unknown;
+}): Promise<{
+    id: string;
+    ownerEmail: string;
+    orgId: string;
+    changeType: string;
+    targetType: string;
+    targetId: string;
+    status: string;
+    summary: string;
+    payload: string;
+    beforeValue: string;
+    afterValue: string;
+    requestedBy: string;
+    reviewedBy: string;
+    reviewedAt: number;
+    createdAt: number;
+    updatedAt: number;
+}>;
 export declare function upsertDestination(input: DispatchDestinationInput): Promise<{
     id: string;
     ownerEmail: string;

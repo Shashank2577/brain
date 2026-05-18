@@ -1,6 +1,7 @@
 import { resolveOrgIdForEmail } from "@agent-native/core/org";
 import crypto from "node:crypto";
 import { consumeLinkToken, resolveLinkedOwner } from "./dispatch-store.js";
+import { handleRemoteCodeCommand } from "./dispatch-remote-commands.js";
 const slackProfileCache = new Map();
 const SLACK_PROFILE_CACHE_TTL = 10 * 60 * 1000;
 function contextString(value) {
@@ -149,11 +150,15 @@ export async function resolveDispatchOwner(incoming) {
         return fallbackOwnerForIncoming(incoming);
     }
 }
-export async function beforeDispatchProcess(incoming, _adapter) {
+export async function beforeDispatchProcess(incoming, adapter) {
     const trimmed = incoming.text.trim();
-    const match = trimmed.match(/^\/link\s+([a-zA-Z0-9_-]+)$/);
-    if (!match)
-        return { handled: false };
+    const commandText = contextString(incoming.platformContext.rawText) || trimmed;
+    const match = commandText.match(/^\/link(?:@\w+)?\s+([a-zA-Z0-9_-]+)$/);
+    if (!match) {
+        return handleRemoteCodeCommand(incoming, adapter, {
+            resolveOwner: () => resolveDispatchOwner(incoming),
+        });
+    }
     try {
         const owner = await consumeLinkToken({
             platform: incoming.platform,

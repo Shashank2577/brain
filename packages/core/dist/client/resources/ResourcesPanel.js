@@ -11,6 +11,8 @@ import { serializeFrontmatter } from "../../resources/metadata.js";
 import { useResourceTree, useResource, useCreateResource, useUpdateResource, useDeleteResource, useUploadResource, withMcpServersFolder, withAgentScratchFolder, } from "./use-resources.js";
 import { formatMcpServerError, getMcpUrlValidationError, useMcpServers, useCreateMcpServer, useDeleteMcpServer, testMcpServerUrl, parseMcpVirtualId, } from "./use-mcp-servers.js";
 import { McpServerDetail } from "./McpServerDetail.js";
+import { BuiltinCapabilityDetail } from "./BuiltinCapabilityDetail.js";
+import { parseMcpBuiltinVirtualId, useBuiltinCapabilities, } from "./use-builtin-capabilities.js";
 import { useOrg } from "../org/hooks.js";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, } from "../components/ui/tooltip.js";
 import { Popover, PopoverContent, PopoverTrigger, } from "../components/ui/popover.js";
@@ -451,7 +453,13 @@ Create skill files under \`skills/<name>/SKILL.md\` to give the agent specialize
 | Skill | Path | Description |
 |-------|------|-------------|
 | *(use the skill button to create one)* | \`skills/example/SKILL.md\` | |
+
+## Workspace files
+
+Workspace resources are for files users intentionally add, edit, or manage. Agents may create hidden \`agent_scratch\` resources for temporary working notes, scripts, or intermediate results; only promote those files into workspace visibility when a user explicitly asks to keep them.
 `;
+const WORKSPACE_RESOURCE_OWNER = "__workspace__";
+const SHARED_RESOURCE_OWNER = "__shared__";
 // BuilderBrowserCard moved to settings/BrowserSection.tsx
 export function ResourcesPanel() {
     const { data: org } = useOrg();
@@ -471,14 +479,21 @@ export function ResourcesPanel() {
         catch { }
         return "visual";
     });
+    const [showAgentScratch, setShowAgentScratch] = useState(false);
     useEffect(() => {
         setToolbarDeleteConfirmId(null);
     }, [selectedResourceId]);
     const [saveStatus, setSaveStatus] = useState("idle");
     const fileInputRef = useRef(null);
-    const sharedTreeQuery = useResourceTree("shared");
-    const personalTreeQuery = useResourceTree("personal");
+    const sharedTreeQuery = useResourceTree("shared", {
+        includeAgentScratch: showAgentScratch,
+    });
+    const personalTreeQuery = useResourceTree("personal", {
+        includeAgentScratch: showAgentScratch,
+    });
+    const workspaceTreeQuery = useResourceTree("workspace");
     const mcpServersQuery = useMcpServers();
+    const builtinCapabilitiesQuery = useBuiltinCapabilities();
     const createMcpServer = useCreateMcpServer();
     const deleteMcpServer = useDeleteMcpServer();
     // Merge MCP servers into each scope's tree as a virtual `mcp-servers/`
@@ -486,8 +501,13 @@ export function ResourcesPanel() {
     // table — the virtual ids carry the `mcp:<scope>:<id>` prefix that
     // `handleSelect` and `handleDelete` below recognize to route back to
     // the MCP endpoints.
-    const personalTree = withAgentScratchFolder(withMcpServersFolder(personalTreeQuery.data ?? [], mcpServersQuery.data?.user ?? []));
-    const sharedTree = withMcpServersFolder(sharedTreeQuery.data ?? [], mcpServersQuery.data?.org ?? []);
+    const personalTree = withAgentScratchFolder(withMcpServersFolder(personalTreeQuery.data ?? [], mcpServersQuery.data?.user ?? [], {
+        builtins: (builtinCapabilitiesQuery.data?.capabilities ?? []).map((capability) => ({ capability, scope: "user" })),
+    }), { show: showAgentScratch });
+    const sharedTree = withAgentScratchFolder(withMcpServersFolder(sharedTreeQuery.data ?? [], mcpServersQuery.data?.org ?? [], {
+        builtins: (builtinCapabilitiesQuery.data?.capabilities ?? []).map((capability) => ({ capability, scope: "org" })),
+    }), { show: showAgentScratch });
+    const workspaceTree = workspaceTreeQuery.data ?? [];
     const orgRole = mcpServersQuery.data?.role ?? org?.role ?? null;
     const hasOrgForMcp = !!(mcpServersQuery.data?.orgId ?? org?.orgId);
     const canCreateOrgMcp = hasOrgForMcp && (orgRole === "owner" || orgRole === "admin");
@@ -505,6 +525,15 @@ export function ResourcesPanel() {
             : (mcpServersQuery.data?.org ?? []);
         return list.find((s) => s.id === parsed.serverId) ?? null;
     }, [selectedResourceId, mcpServersQuery.data]);
+    const selectedBuiltinCapability = React.useMemo(() => {
+        const parsed = selectedResourceId
+            ? parseMcpBuiltinVirtualId(selectedResourceId)
+            : null;
+        if (!parsed)
+            return null;
+        const capability = (builtinCapabilitiesQuery.data?.capabilities ?? []).find((item) => item.id === parsed.capabilityId);
+        return capability ? { capability, scope: parsed.scope } : null;
+    }, [selectedResourceId, builtinCapabilitiesQuery.data]);
     // Sync activeScope once the org role arrives (canEditOrg is resolved async).
     useEffect(() => {
         if (!canEditOrg && activeScope === "shared") {
@@ -513,13 +542,18 @@ export function ResourcesPanel() {
     }, [canEditOrg, activeScope]);
     // Virtual MCP ids aren't in the resources store — skip the fetch so
     // useResource doesn't 404-flash.
-    const resourceQuery = useResource(selectedResourceId && !parseMcpVirtualId(selectedResourceId)
+    const resourceQuery = useResource(selectedResourceId &&
+        !parseMcpVirtualId(selectedResourceId) &&
+        !parseMcpBuiltinVirtualId(selectedResourceId)
         ? selectedResourceId
         : null);
     const createResource = useCreateResource();
     const updateResource = useUpdateResource();
     const deleteResource = useDeleteResource();
     const uploadResource = useUploadResource();
+    const selectedResourceReadOnly = !!resourceQuery.data &&
+        (resourceQuery.data.owner === WORKSPACE_RESOURCE_OWNER ||
+            (resourceQuery.data.owner === SHARED_RESOURCE_OWNER && !canEditOrg));
     // Ensure AGENTS.md exists in the organization scope when the panel opens.
     // The server also seeds it on table init; this is a safety net. Only attempt
     // for users who can write to organization resources — non-admins would just
@@ -542,7 +576,6 @@ export function ResourcesPanel() {
     }, [canEditOrg]);
     // Are we viewing a file (editor) or the tree?
     const isEditing = selectedResourceId !== null;
-    const isMcpSelected = !!selectedMcpServer;
     const handleSelect = useCallback((resource) => {
         setSelectedResourceId(resource.id);
     }, []);
@@ -586,6 +619,8 @@ export function ResourcesPanel() {
             });
             return;
         }
+        if (parseMcpBuiltinVirtualId(id))
+            return;
         deleteResource.mutate(id);
         if (selectedResourceId === id) {
             setSelectedResourceId(null);
@@ -602,8 +637,10 @@ export function ResourcesPanel() {
     const handleSave = useCallback((content) => {
         if (!selectedResourceId)
             return;
+        if (selectedResourceReadOnly)
+            return;
         updateResource.mutate({ id: selectedResourceId, content });
-    }, [updateResource, selectedResourceId]);
+    }, [updateResource, selectedResourceId, selectedResourceReadOnly]);
     const handleUploadFiles = useCallback((files) => {
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -631,18 +668,20 @@ export function ResourcesPanel() {
             handleUploadFiles(e.dataTransfer.files);
         }
     }, [handleUploadFiles]);
-    return (_jsxs("div", { className: cn("relative flex h-full flex-col min-h-0", dragOver && "ring-2 ring-inset ring-accent"), onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop, children: [isEditing ? (_jsxs("div", { className: "flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5", children: [_jsxs("div", { className: "flex items-center gap-1.5 min-w-0", children: [_jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: handleBack, "aria-label": "Back to workspace", className: "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50", children: _jsx(IconArrowLeft, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Back to workspace" })] }) }), selectedMcpServer ? (_jsx(PathBreadcrumb, { path: `mcp-servers/${selectedMcpServer.name}.json` })) : resourceQuery.data ? (_jsx(PathBreadcrumb, { path: resourceQuery.data.path })) : null] }), _jsxs("div", { className: "flex items-center gap-1 shrink-0", children: [!selectedMcpServer && resourceQuery.data && (_jsx("span", { "aria-live": "polite", className: "mr-1 w-16 text-right text-[11px] text-muted-foreground/60", children: saveStatus === "saving"
-                                    ? "Saving..."
-                                    : saveStatus === "saved"
-                                        ? "Saved"
-                                        : "" })), !selectedMcpServer &&
+    return (_jsxs("div", { className: cn("relative flex h-full flex-col min-h-0", dragOver && "ring-2 ring-inset ring-accent"), onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop, children: [isEditing ? (_jsxs("div", { className: "flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5", children: [_jsxs("div", { className: "flex items-center gap-1.5 min-w-0", children: [_jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: handleBack, "aria-label": "Back to workspace", className: "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50", children: _jsx(IconArrowLeft, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Back to workspace" })] }) }), selectedMcpServer ? (_jsx(PathBreadcrumb, { path: `mcp-servers/${selectedMcpServer.name}.json` })) : selectedBuiltinCapability ? (_jsx(PathBreadcrumb, { path: `mcp-servers/${selectedBuiltinCapability.capability.name}.json` })) : resourceQuery.data ? (_jsx(PathBreadcrumb, { path: resourceQuery.data.path })) : null] }), _jsxs("div", { className: "flex items-center gap-1 shrink-0", children: [!selectedMcpServer && resourceQuery.data && (_jsx("span", { "aria-live": "polite", className: "mr-1 w-16 text-right text-[11px] text-muted-foreground/60", children: selectedResourceReadOnly
+                                    ? "Read only"
+                                    : saveStatus === "saving"
+                                        ? "Saving..."
+                                        : saveStatus === "saved"
+                                            ? "Saved"
+                                            : "" })), !selectedMcpServer &&
                                 resourceQuery.data &&
                                 (resourceQuery.data.mimeType === "text/markdown" ||
                                     resourceQuery.data.path.endsWith(".md")) && (_jsx("div", { className: "flex items-center gap-0.5 mr-1", children: _jsxs(TooltipProvider, { delayDuration: 200, children: [_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => setEditorView("visual"), "aria-label": "Visual editor", className: cn("flex h-6 w-6 items-center justify-center rounded-md", editorView === "visual"
                                                             ? "bg-accent text-foreground"
                                                             : "text-muted-foreground hover:text-foreground hover:bg-accent/50"), children: _jsx(IconEye, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Visual editor" })] }), _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => setEditorView("code"), "aria-label": "Code editor", className: cn("flex h-6 w-6 items-center justify-center rounded-md", editorView === "code"
                                                             ? "bg-accent text-foreground"
-                                                            : "text-muted-foreground hover:text-foreground hover:bg-accent/50"), children: _jsx(IconCode, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Code editor" })] })] }) })), _jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => {
+                                                            : "text-muted-foreground hover:text-foreground hover:bg-accent/50"), children: _jsx(IconCode, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Code editor" })] })] }) })), !selectedBuiltinCapability && !selectedResourceReadOnly && (_jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => {
                                                     if (!selectedResourceId)
                                                         return;
                                                     if (toolbarDeleteConfirmId === selectedResourceId) {
@@ -657,24 +696,34 @@ export function ResourcesPanel() {
                                                     : "Delete resource", className: cn("flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-accent/50", toolbarDeleteConfirmId === selectedResourceId &&
                                                     "bg-destructive/10 text-destructive"), children: _jsx(IconTrash, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: toolbarDeleteConfirmId === selectedResourceId
                                                 ? "Click again to delete"
-                                                : "Delete resource" })] }) })] })] })) : (_jsxs("div", { className: "absolute top-1 right-1 z-10 flex items-center gap-1", children: [_jsx(CreateMenu, { scope: activeScope, onCreateFile: handleCreateFromToolbar, onCreateResource: handleCreateResourceFromToolbar, onCreateMcpServer: handleCreateMcpServer, canCreateOrgMcp: canCreateOrgMcp, hasOrg: hasOrgForMcp }), _jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => fileInputRef.current?.click(), "aria-label": "Upload file", className: "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50", children: _jsx(IconUpload, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Upload file" })] }) }), _jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("a", { href: WORKSPACE_DOCS_URL, target: "_blank", rel: "noopener noreferrer", "aria-label": "Open Workspace docs", className: "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50", children: _jsx(IconHelp, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { side: "left", sideOffset: 8, children: "Open Workspace docs" })] }) }), _jsx("input", { ref: fileInputRef, type: "file", multiple: true, className: "hidden", onChange: (e) => {
+                                                : "Delete resource" })] }) }))] })] })) : (_jsxs("div", { className: "absolute top-1 right-1 z-10 flex items-center gap-1", children: [_jsx(CreateMenu, { scope: activeScope, onCreateFile: handleCreateFromToolbar, onCreateResource: handleCreateResourceFromToolbar, onCreateMcpServer: handleCreateMcpServer, canCreateOrgMcp: canCreateOrgMcp, hasOrg: hasOrgForMcp }), _jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: () => fileInputRef.current?.click(), "aria-label": "Upload file", className: "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50", children: _jsx(IconUpload, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: "Upload file" })] }) }), _jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { type: "button", onClick: () => setShowAgentScratch((value) => !value), "aria-label": showAgentScratch
+                                            ? "Hide agent scratch files"
+                                            : "Show agent scratch files", className: cn("flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50", showAgentScratch && "bg-accent/50 text-foreground"), children: _jsx(IconEye, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { children: showAgentScratch
+                                        ? "Hide agent scratch files"
+                                        : "Show agent scratch files" })] }) }), _jsx(TooltipProvider, { delayDuration: 200, children: _jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("a", { href: WORKSPACE_DOCS_URL, target: "_blank", rel: "noopener noreferrer", "aria-label": "Open Workspace docs", className: "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50", children: _jsx(IconHelp, { className: "h-3.5 w-3.5" }) }) }), _jsx(TooltipContent, { side: "left", sideOffset: 8, children: "Open Workspace docs" })] }) }), _jsx("input", { ref: fileInputRef, type: "file", multiple: true, className: "hidden", onChange: (e) => {
                             if (e.target.files && e.target.files.length > 0) {
                                 handleUploadFiles(e.target.files);
                                 e.target.value = "";
                             }
-                        } })] })), _jsx("div", { className: "flex flex-1 flex-col min-h-0 overflow-hidden", children: isEditing ? (selectedMcpServer ? (_jsx("div", { className: "flex-1 min-h-0 overflow-hidden", children: _jsx(McpServerDetail, { server: selectedMcpServer }) })) : selectedResourceId && resourceQuery.data ? (_jsx("div", { className: "flex-1 min-h-0 overflow-hidden", children: _jsx(ResourceEditor, { resource: resourceQuery.data, onSave: handleSave, view: editorView, onViewChange: setEditorView, onSaveStatusChange: setSaveStatus, hideToolbar: true }) })) : resourceQuery.isError ? (_jsx("div", { className: "flex flex-1 items-center justify-center text-[12px] text-destructive/70", children: "Failed to load resource" })) : (_jsx("div", { className: "flex flex-1 items-center justify-center text-[12px] text-muted-foreground/50", children: "Loading..." }))) : (_jsxs("div", { className: "flex-1 min-h-0 overflow-y-auto", children: [!personalTreeQuery.isLoading &&
+                        } })] })), _jsx("div", { className: "flex flex-1 flex-col min-h-0 overflow-hidden", children: isEditing ? (selectedMcpServer ? (_jsx("div", { className: "flex-1 min-h-0 overflow-hidden", children: _jsx(McpServerDetail, { server: selectedMcpServer }) })) : selectedBuiltinCapability ? (_jsx("div", { className: "flex-1 min-h-0 overflow-hidden", children: _jsx(BuiltinCapabilityDetail, { capability: selectedBuiltinCapability.capability, scope: selectedBuiltinCapability.scope, canEditOrg: canEditOrg }) })) : selectedResourceId && resourceQuery.data ? (_jsx("div", { className: "flex flex-1 min-h-0 flex-col overflow-hidden", children: _jsx(ResourceEditor, { resource: resourceQuery.data, onSave: handleSave, view: editorView, onViewChange: setEditorView, onSaveStatusChange: setSaveStatus, hideToolbar: true, readOnly: selectedResourceReadOnly }) })) : resourceQuery.isError ? (_jsx("div", { className: "flex flex-1 items-center justify-center text-[12px] text-destructive/70", children: "Failed to load resource" })) : (_jsx("div", { className: "flex flex-1 items-center justify-center text-[12px] text-muted-foreground/50", children: "Loading..." }))) : (_jsxs("div", { className: "flex-1 min-h-0 overflow-y-auto", children: [!personalTreeQuery.isLoading &&
                             !sharedTreeQuery.isLoading &&
+                            !workspaceTreeQuery.isLoading &&
+                            workspaceTree.length === 0 &&
                             (personalTreeQuery.data ?? []).length === 0 &&
-                            (sharedTreeQuery.data ?? []).length === 0 && (_jsxs("div", { className: "mx-2 mt-2 rounded-md border border-border bg-muted/30 p-2.5 text-[11px] text-muted-foreground", children: [_jsx("p", { className: "mb-1 font-medium text-foreground", children: "This is your Workspace" }), _jsx("p", { className: "mb-1.5 leading-snug", children: "Files the agent reads and writes \u2014 notes, instructions, skills, custom agents, scheduled jobs. They live in the database, so they persist across sessions and deploys." }), _jsxs("p", { className: "mb-2 leading-snug", children: [_jsx("span", { className: "text-foreground", children: "Personal" }), " is just for you.", " ", _jsx("span", { className: "text-foreground", children: "Organization" }), " is visible to everyone in your organization", org?.orgId ? " — only admins can edit." : "."] }), _jsxs("a", { href: WORKSPACE_DOCS_URL, target: "_blank", rel: "noopener noreferrer", className: "inline-flex items-center gap-1 text-foreground hover:underline", children: ["Learn more", _jsx(IconExternalLink, { className: "h-3 w-3" })] })] })), _jsx(ResourceTree, { tree: personalTree, isLoading: personalTreeQuery.isLoading, deletingId: deleteResource.isPending
+                            (sharedTreeQuery.data ?? []).length === 0 && (_jsxs("div", { className: "mx-2 mt-2 rounded-md border border-border bg-muted/30 p-2.5 text-[11px] text-muted-foreground", children: [_jsx("p", { className: "mb-1 font-medium text-foreground", children: "This is your Workspace" }), _jsx("p", { className: "mb-1.5 leading-snug", children: "Files the agent reads and writes \u2014 notes, instructions, skills, custom agents, scheduled jobs, and inherited workspace context. They live in the database, so they persist across sessions and deploys." }), _jsxs("p", { className: "mb-2 leading-snug", children: [_jsx("span", { className: "text-foreground", children: "Workspace" }), " is inherited from Dispatch.", " ", _jsx("span", { className: "text-foreground", children: "Organization" }), " is visible to everyone in your organization", org?.orgId ? " — only admins can edit. " : ". ", _jsx("span", { className: "text-foreground", children: "Personal" }), " is just for you."] }), _jsxs("a", { href: WORKSPACE_DOCS_URL, target: "_blank", rel: "noopener noreferrer", className: "inline-flex items-center gap-1 text-foreground hover:underline", children: ["Learn more", _jsx(IconExternalLink, { className: "h-3 w-3" })] })] })), workspaceTree.length > 0 && (_jsx(ResourceTree, { tree: workspaceTree, isLoading: workspaceTreeQuery.isLoading, deletingId: deleteResource.isPending
                                 ? deleteResource.variables
                                 : deleteMcpServer.isPending
                                     ? `mcp:${deleteMcpServer.variables.scope}:${deleteMcpServer.variables.id}`
-                                    : null, selectedId: selectedResourceId, onSelect: handleSelect, onCreateFile: (parentPath, name) => handleCreateFile(parentPath, name, "personal"), onCreateFolder: (parentPath, name) => handleCreateFolder(parentPath, name, "personal"), onDelete: handleDelete, onRename: handleRename, onDrop: handleUploadFiles, title: "Personal", titleTooltip: "Files visible only to you" }), _jsx(ResourceTree, { tree: sharedTree, isLoading: sharedTreeQuery.isLoading, deletingId: deleteResource.isPending
+                                    : null, selectedId: selectedResourceId, onSelect: handleSelect, onCreateFile: () => { }, onCreateFolder: () => { }, onDelete: () => { }, onRename: () => { }, onDrop: () => { }, title: "Workspace", titleTooltip: "Global resources inherited from Dispatch by every app. Read-only here.", readOnly: true, headingHint: "Inherited" })), _jsx(ResourceTree, { tree: sharedTree, isLoading: sharedTreeQuery.isLoading, deletingId: deleteResource.isPending
                                 ? deleteResource.variables
                                 : deleteMcpServer.isPending
                                     ? `mcp:${deleteMcpServer.variables.scope}:${deleteMcpServer.variables.id}`
                                     : null, selectedId: selectedResourceId, onSelect: handleSelect, onCreateFile: (parentPath, name) => handleCreateFile(parentPath, name, "shared"), onCreateFolder: (parentPath, name) => handleCreateFolder(parentPath, name, "shared"), onDelete: handleDelete, onRename: handleRename, onDrop: handleUploadFiles, title: "Organization", titleTooltip: canEditOrg
                                 ? "Files visible to everyone in your organization"
-                                : "Files visible to everyone in your organization. Read-only — only admins can edit.", readOnly: !canEditOrg, headingHint: !canEditOrg ? "Read only" : undefined })] })) })] }));
+                                : "Files visible to everyone in your organization. Read-only — only admins can edit.", readOnly: !canEditOrg, headingHint: !canEditOrg ? "Read only" : undefined }), _jsx(ResourceTree, { tree: personalTree, isLoading: personalTreeQuery.isLoading, deletingId: deleteResource.isPending
+                                ? deleteResource.variables
+                                : deleteMcpServer.isPending
+                                    ? `mcp:${deleteMcpServer.variables.scope}:${deleteMcpServer.variables.id}`
+                                    : null, selectedId: selectedResourceId, onSelect: handleSelect, onCreateFile: (parentPath, name) => handleCreateFile(parentPath, name, "personal"), onCreateFolder: (parentPath, name) => handleCreateFolder(parentPath, name, "personal"), onDelete: handleDelete, onRename: handleRename, onDrop: handleUploadFiles, title: "Personal", titleTooltip: "Files visible only to you" })] })) })] }));
 }
 //# sourceMappingURL=ResourcesPanel.js.map

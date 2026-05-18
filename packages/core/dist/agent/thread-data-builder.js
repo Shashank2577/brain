@@ -1,3 +1,4 @@
+import { normalizeCodeAgentTranscript, } from "../code-agents/transcript-normalizer.js";
 const MAX_STORED_ATTACHMENT_CHARS = 60_000;
 function isInternalContinuationError(event) {
     const code = String(event.errorCode ?? "").toLowerCase();
@@ -301,6 +302,98 @@ export function normalizeThreadRepository(repo) {
         headId && seenIds.has(headId) ? headId : (previousId ?? null);
     return normalized;
 }
+export function buildRepositoryFromCodeAgentTranscript(events, options = {}) {
+    const normalized = normalizeCodeAgentTranscript(events.map(toCoreCodeAgentTranscriptEvent));
+    const repo = {
+        headId: null,
+        messages: [],
+    };
+    let headId = null;
+    let assistantTurn = null;
+    const flushAssistant = () => {
+        if (!assistantTurn || assistantTurn.content.length === 0) {
+            assistantTurn = null;
+            return;
+        }
+        const message = {
+            id: assistantTurn.id,
+            createdAt: new Date(assistantTurn.createdAt),
+            role: "assistant",
+            content: assistantTurn.content,
+            status: { type: "complete", reason: "stop" },
+            metadata: {
+                ...(assistantTurn.runId ? { runId: assistantTurn.runId } : {}),
+                custom: {
+                    codeAgentTranscriptEventIds: assistantTurn.eventIds,
+                },
+            },
+        };
+        repo.messages.push({ message, parentId: headId });
+        headId = message.id;
+        repo.headId = headId;
+        assistantTurn = null;
+    };
+    for (const item of normalized.items) {
+        if (item.type === "user") {
+            flushAssistant();
+            const runId = item.events[0]?.runId;
+            const userMessage = buildUserMessage({
+                text: item.text,
+                attachments: codeAgentAttachmentsFromEvents(item.events),
+                runId: runId ? `${runId}-${item.id}` : item.id,
+                createdAt: new Date(item.createdAt),
+            });
+            userMessage.id = `code-user-${item.id}`;
+            const existingCustom = userMessage.metadata.custom &&
+                typeof userMessage.metadata.custom === "object"
+                ? userMessage.metadata.custom
+                : {};
+            userMessage.metadata = {
+                ...userMessage.metadata,
+                custom: {
+                    ...existingCustom,
+                    submittedRunId: runId,
+                    codeAgentTranscriptEventIds: item.eventIds,
+                },
+            };
+            repo.messages.push({ message: userMessage, parentId: headId });
+            headId = userMessage.id;
+            repo.headId = headId;
+            continue;
+        }
+        const content = contentPartForCodeAgentTranscriptItem(item, options);
+        if (!content)
+            continue;
+        if (!assistantTurn || assistantTurn.turnIndex !== item.turnIndex) {
+            flushAssistant();
+            assistantTurn = {
+                turnIndex: item.turnIndex,
+                id: `code-assistant-${item.turnIndex}-${item.id}`,
+                createdAt: item.createdAt,
+                updatedAt: item.updatedAt,
+                runId: item.events[0]?.runId,
+                content: [],
+                eventIds: [],
+            };
+        }
+        assistantTurn.updatedAt = item.updatedAt;
+        assistantTurn.eventIds.push(...item.eventIds);
+        if (content.type === "text") {
+            const last = assistantTurn.content.at(-1);
+            if (last?.type === "text") {
+                last.text = `${last.text}${last.text ? "\n\n" : ""}${content.text}`;
+            }
+            else {
+                assistantTurn.content.push(content);
+            }
+        }
+        else {
+            assistantTurn.content.push(content);
+        }
+    }
+    flushAssistant();
+    return normalizeThreadRepository(repo);
+}
 function rewriteEntryParentId(entry, idRewrites) {
     const parentId = getStoredParentId(entry);
     if (!parentId)
@@ -460,6 +553,123 @@ export function buildUserMessage(opts) {
             },
         },
     };
+}
+function toCoreCodeAgentTranscriptEvent(event) {
+    return {
+        schemaVersion: 1,
+        id: event.id,
+        runId: event.runId,
+        kind: (event.kind ??
+            event.type ??
+            "status"),
+        message: event.message ?? event.text ?? "",
+        createdAt: event.createdAt,
+        metadata: {
+            ...(event.metadata ?? {}),
+            ...(event.artifactPath ? { artifactPath: event.artifactPath } : {}),
+            ...(event.artifactUrl ? { artifactUrl: event.artifactUrl } : {}),
+        },
+    };
+}
+function contentPartForCodeAgentTranscriptItem(item, options) {
+    if (item.type === "assistant") {
+        return item.text.trim() ? { type: "text", text: item.text } : null;
+    }
+    if (item.type === "tool") {
+        return toolContentPartForCodeAgentTranscriptItem(item);
+    }
+    if (item.type === "status") {
+        const text = statusTextForCodeAgentTranscriptItem(item, options);
+        return text ? { type: "text", text } : null;
+    }
+    return null;
+}
+function toolContentPartForCodeAgentTranscriptItem(item) {
+    return {
+        type: "tool-call",
+        toolCallId: `code-tool-${item.id}`,
+        toolName: item.tool ?? item.label ?? "code-agent",
+        argsText: previewCodeAgentTranscriptValue(item.input) ?? "",
+        args: recordArgsForCodeAgentTool(item.input),
+        ...(item.result !== undefined
+            ? { result: previewCodeAgentTranscriptValue(item.result) ?? "" }
+            : {}),
+    };
+}
+function statusTextForCodeAgentTranscriptItem(item, options) {
+    if (options.hideCredentialMessages && isCredentialCodeAgentText(item.text)) {
+        return null;
+    }
+    if (item.statusKind === "artifact") {
+        const event = item.events[0];
+        const path = stringRecordValue(event?.metadata, "artifactPath") ??
+            stringRecordValue(event?.metadata, "path");
+        const url = stringRecordValue(event?.metadata, "artifactUrl");
+        const target = url ?? path;
+        return target
+            ? `Artifact: ${item.text}\n${target}`
+            : `Artifact: ${item.text}`;
+    }
+    if (item.level === "info" && item.statusKind !== "note")
+        return null;
+    return item.text;
+}
+function codeAgentAttachmentsFromEvents(events) {
+    for (const event of events) {
+        const raw = event.metadata?.attachments;
+        if (!Array.isArray(raw) || raw.length === 0)
+            continue;
+        const attachments = [];
+        for (const item of raw) {
+            if (!item || typeof item !== "object")
+                continue;
+            const record = item;
+            const name = stringRecordValue(record, "name");
+            if (!name)
+                continue;
+            const contentType = stringRecordValue(record, "type");
+            const text = stringRecordValue(record, "text");
+            const dataUrl = stringRecordValue(record, "dataUrl");
+            attachments.push({
+                type: dataUrl ? "image" : "file",
+                name,
+                ...(contentType ? { contentType } : {}),
+                ...(text ? { text } : {}),
+                ...(dataUrl ? { data: dataUrl } : {}),
+            });
+        }
+        if (attachments.length > 0)
+            return attachments;
+    }
+    return [];
+}
+function recordArgsForCodeAgentTool(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        return {};
+    const result = {};
+    for (const [key, entry] of Object.entries(value)) {
+        result[key] =
+            typeof entry === "string"
+                ? entry
+                : (previewCodeAgentTranscriptValue(entry) ?? "");
+    }
+    return result;
+}
+function previewCodeAgentTranscriptValue(value) {
+    if (value === undefined || value === null)
+        return undefined;
+    const text = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+    const trimmed = text.trim();
+    if (!trimmed)
+        return undefined;
+    return trimmed.length > 4000 ? `${trimmed.slice(0, 4000)}\n...` : trimmed;
+}
+function stringRecordValue(record, key) {
+    const value = record?.[key];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+function isCredentialCodeAgentText(value) {
+    return /No LLM provider key was found|Missing credentials/i.test(value);
 }
 export function upsertUserMessage(repo, userMsg) {
     const nextRepo = normalizeThreadRepository(repo);

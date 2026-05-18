@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { agentNativePath } from "../api-path.js";
 import { Suspense, lazy, useState, useEffect, useCallback, useRef, } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { IconChevronDown, IconCheck, IconExternalLink, IconBrain, IconBrowser, IconGitBranch, IconCloud, IconDatabase, IconShield, IconPlugConnected, IconTopologyRing2, IconLoader2, IconUpload, IconCoin, IconMail, IconKey, IconMicrophone, IconBolt, IconGauge, IconUserCircle, } from "@tabler/icons-react";
+import { IconChevronDown, IconCheck, IconExternalLink, IconBrain, IconBrowser, IconGitBranch, IconCloud, IconDatabase, IconShield, IconPlugConnected, IconTopologyRing2, IconLoader2, IconUpload, IconCoin, IconMail, IconKey, IconMicrophone, IconEyeOff, IconBolt, IconGauge, IconUserCircle, IconApps, } from "@tabler/icons-react";
 import { SettingsSection } from "./SettingsSection.js";
 import { useBuilderConnectFlow, useBuilderStatus, } from "./useBuilderStatus.js";
 import { BuilderBMark } from "../builder-mark.js";
@@ -10,6 +10,7 @@ import { AgentsSection } from "./AgentsSection.js";
 import { UsageSection } from "./UsageSection.js";
 import { SecretsSection } from "./SecretsSection.js";
 import { VoiceTranscriptionSection } from "./VoiceTranscriptionSection.js";
+import { DemoModeSection } from "./DemoModeSection.js";
 import { AutomationsSection } from "./AutomationsSection.js";
 import { PROVIDER_ENV_PLACEHOLDERS } from "../../agent/engine/provider-env-vars.js";
 import { Tooltip, TooltipContent, TooltipTrigger, } from "../components/ui/tooltip.js";
@@ -128,14 +129,14 @@ function DisconnectBuilderButton() {
     return (_jsxs(_Fragment, { children: [_jsx("button", { type: "button", onClick: handleDisconnectClick, disabled: phase === "busy", className: "inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/40 disabled:opacity-60 disabled:cursor-wait", "aria-busy": phase === "busy", children: phase === "busy" ? (_jsxs(_Fragment, { children: [_jsx(IconLoader2, { size: 10, className: "animate-spin" }), "Disconnecting\u2026"] })) : ("Disconnect") }), err && _jsx("span", { className: "text-[10px] text-destructive", children: err })] }));
 }
 // ─── "Connect Builder.io" card (shared across all sections) ─────────────────
-function UseBuilderCard({ builderFlow, connectUrl, connected, orgName, envManaged, credentialSource, label = "Connect Builder.io", subtitle = "Free credits to start — no API key needed.", dim, }) {
+function UseBuilderCard({ builderFlow, connectUrl, connected, orgName, envManaged, credentialSource, trackingSource = "settings_panel_builder_card", trackingFlow = "connect_llm", label = "Connect Builder.io", subtitle = "Free credits to start — no API key needed.", dim, }) {
     const effectiveConnected = connected || builderFlow.configured;
     const effectiveOrgName = builderFlow.orgName ?? orgName;
     const bgClass = dim ? "" : "bg-accent/30";
     if (effectiveConnected) {
         return (_jsxs("div", { className: `rounded-md border border-border px-2.5 py-2 ${bgClass}`, children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsx("div", { className: "text-[11px] font-medium text-foreground", children: "Builder.io" }), _jsxs("span", { className: "flex items-center gap-1 text-[10px] text-green-500", children: [_jsx(IconCheck, { size: 10 }), "Connected"] })] }), effectiveOrgName && (_jsx("p", { className: "text-[10px] text-muted-foreground mt-0.5", children: effectiveOrgName })), envManaged ? (_jsx("p", { className: "text-[10px] text-muted-foreground mt-1", children: credentialSource === "env"
                         ? "Deployment fallback is available. Connect your own account to override it."
-                        : "Using your connected Builder account. Deployment fallback is still available." })) : null, connectUrl || credentialSource !== "env" ? (_jsxs("div", { className: "flex items-center gap-2 mt-2.5", children: [connectUrl && (_jsxs("button", { type: "button", onClick: builderFlow.start, disabled: builderFlow.connecting, className: "inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] no-underline text-muted-foreground hover:text-foreground hover:bg-accent/40 disabled:opacity-60", children: [builderFlow.connecting
+                        : "Using your connected Builder account. Deployment fallback is still available." })) : null, connectUrl || credentialSource !== "env" ? (_jsxs("div", { className: "flex items-center gap-2 mt-2.5", children: [connectUrl && (_jsxs("button", { type: "button", onClick: () => builderFlow.start({ trackingSource, trackingFlow }), disabled: builderFlow.connecting, className: "inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] no-underline text-muted-foreground hover:text-foreground hover:bg-accent/40 disabled:opacity-60", children: [builderFlow.connecting
                                     ? "Connecting..."
                                     : credentialSource === "env"
                                         ? "Connect account"
@@ -143,7 +144,7 @@ function UseBuilderCard({ builderFlow, connectUrl, connected, orgName, envManage
     }
     if (!connectUrl)
         return null;
-    return (_jsx("button", { type: "button", onClick: builderFlow.start, disabled: builderFlow.connecting, className: `block w-full rounded-md border border-border px-3 py-3 text-left no-underline bg-gradient-to-br from-teal-500/10 via-transparent to-transparent hover:border-foreground/30 transition-colors disabled:cursor-wait disabled:opacity-70`, children: _jsxs("div", { className: "flex items-start gap-2.5", children: [_jsx("div", { className: "flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background", children: _jsx(BuilderBMark, { className: "h-3.5 w-3.5" }) }), _jsxs("div", { className: "flex-1 min-w-0", children: [_jsxs("div", { className: "flex items-center gap-1.5 flex-wrap", children: [_jsx("span", { className: "text-[12px] font-semibold text-foreground", children: builderFlow.connecting ? "Connecting Builder.io..." : label }), builderFlow.connecting && (_jsx(IconLoader2, { size: 12, className: "shrink-0 animate-spin text-muted-foreground" }))] }), _jsx("p", { className: "text-[10.5px] text-muted-foreground mt-0.5 leading-snug", children: subtitle }), builderFlow.error && (_jsx("p", { className: "mt-1 text-[10px] text-destructive", children: builderFlow.error }))] }), _jsx(IconExternalLink, { size: 12, className: "shrink-0 text-muted-foreground mt-0.5" })] }) }));
+    return (_jsx("button", { type: "button", onClick: () => builderFlow.start({ trackingSource, trackingFlow }), disabled: builderFlow.connecting, className: `block w-full rounded-md border border-border px-3 py-3 text-left no-underline bg-gradient-to-br from-teal-500/10 via-transparent to-transparent hover:border-foreground/30 transition-colors disabled:cursor-wait disabled:opacity-70`, children: _jsxs("div", { className: "flex items-start gap-2.5", children: [_jsx("div", { className: "flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background", children: _jsx(BuilderBMark, { className: "h-3.5 w-3.5" }) }), _jsxs("div", { className: "flex-1 min-w-0", children: [_jsxs("div", { className: "flex items-center gap-1.5 flex-wrap", children: [_jsx("span", { className: "text-[12px] font-semibold text-foreground", children: builderFlow.connecting ? "Connecting Builder.io..." : label }), builderFlow.connecting && (_jsx(IconLoader2, { size: 12, className: "shrink-0 animate-spin text-muted-foreground" }))] }), _jsx("p", { className: "text-[10.5px] text-muted-foreground mt-0.5 leading-snug", children: subtitle }), builderFlow.error && (_jsx("p", { className: "mt-1 text-[10px] text-destructive", children: builderFlow.error }))] }), _jsx(IconExternalLink, { size: 12, className: "shrink-0 text-muted-foreground mt-0.5" })] }) }));
 }
 // ─── Manual setup card ──────────────────────────────────────────────────────
 function ManualSetupCard({ hint, docsUrl, docsLabel = "Read the docs", children, dim, sourceBadge, }) {
@@ -172,6 +173,8 @@ function friendlyModelName(model) {
 }
 function computeSourceBadge(args) {
     const { settingsConfigured, settingsStatus } = args;
+    if (args.builderConnected)
+        return "Connected via Builder";
     if (settingsConfigured) {
         if (settingsStatus?.source === "env") {
             return `Connected via ${settingsStatus.envVar ?? args.envVar ?? "env"}`;
@@ -180,8 +183,6 @@ function computeSourceBadge(args) {
     }
     if (args.envConfigured)
         return `Connected via ${args.envVar ?? "env"}`;
-    if (args.builderConnected)
-        return "Connected via Builder";
     return undefined;
 }
 function latestModelsOnly(models) {
@@ -293,13 +294,14 @@ function LLMSectionInner({ builderFlow, builderLoading, connectUrl, connected, o
         ? (envKeys.find((k) => k.key === envVar)?.configured ?? false)
         : false;
     const settingsConfigured = settingsStatus != null && settingsStatus.engine === currentEngine;
-    const anyKeyConfigured = envConfigured || connected || settingsConfigured;
+    const builderConnected = connected || builderFlow.configured;
+    const anyKeyConfigured = envConfigured || builderConnected || settingsConfigured;
     const sourceBadge = computeSourceBadge({
         settingsConfigured,
         settingsStatus,
         envConfigured,
         envVar,
-        builderConnected: connected,
+        builderConnected,
     });
     const engineChanged = selectedEngine !== currentEngine || selectedModel !== currentModel;
     // Hide the Anthropic-via-AI-SDK alias (redundant with the native entry)
@@ -424,7 +426,7 @@ function LLMSectionInner({ builderFlow, builderLoading, connectUrl, connected, o
         }
         catch { }
     };
-    return (_jsx(SettingsSection, { icon: _jsx(IconBrain, { size: 14 }), title: "LLM", subtitle: "Connect any major LLM \u2014 Claude, GPT, Gemini, and more.", required: true, connected: initialLoading ? undefined : anyKeyConfigured, open: open, onToggle: onToggle, children: initialLoading ? (_jsx(SettingsSkeleton, { lines: 3 })) : (_jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, label: "Connect Builder.io" }), !connected && (_jsx(ManualSetupCard, { hint: "Choose your AI provider and model.", docsUrl: PROVIDER_DOCS[selectedEngine], sourceBadge: sourceBadge, docsLabel: "Get an API key", children: _jsxs("div", { className: "space-y-2 mb-1", children: [_jsx(SettingsSelect, { label: "Provider", value: selectedEngine, options: providerOptions, onValueChange: (val) => {
+    return (_jsx(SettingsSection, { icon: _jsx(IconBrain, { size: 14 }), title: "LLM", subtitle: "Connect any major LLM \u2014 Claude, GPT, Gemini, and more.", required: true, connected: initialLoading ? undefined : anyKeyConfigured, open: open, onToggle: onToggle, children: initialLoading ? (_jsx(SettingsSkeleton, { lines: 3 })) : (_jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, trackingSource: "llm_settings", trackingFlow: "connect_llm", label: "Connect Builder.io" }), !builderConnected && (_jsx(ManualSetupCard, { hint: "Choose your AI provider and model.", docsUrl: PROVIDER_DOCS[selectedEngine], sourceBadge: sourceBadge, docsLabel: "Get an API key", children: _jsxs("div", { className: "space-y-2 mb-1", children: [_jsx(SettingsSelect, { label: "Provider", value: selectedEngine, options: providerOptions, onValueChange: (val) => {
                                     setSelectedEngine(val);
                                     const info = engines.find((e) => e.name === val);
                                     setSelectedModel(info?.defaultModel ?? "");
@@ -433,6 +435,149 @@ function LLMSectionInner({ builderFlow, builderLoading, connectUrl, connected, o
                                             if (e.key === "Enter")
                                                 handleSave();
                                         }, placeholder: PROVIDER_ENV_PLACEHOLDERS[envVar] ?? "...", className: "flex-1 rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-accent" }), _jsx("button", { onClick: handleSave, disabled: !apiKey.trim() || saving, className: "rounded bg-accent px-2 py-1 text-[10px] font-medium text-foreground hover:bg-accent/80 disabled:opacity-40", children: saving ? (_jsx(IconLoader2, { size: 10, className: "animate-spin" })) : saved ? (_jsx(IconCheck, { size: 10 })) : ("Save") })] })) : null, _jsxs("div", { className: "flex items-center gap-2", children: [_jsx("button", { onClick: handleTest, disabled: testing, className: "rounded border border-border px-2.5 py-1 text-[10px] font-medium text-foreground hover:bg-accent/40 disabled:opacity-40", children: testing ? (_jsxs("span", { className: "flex items-center gap-1", children: [_jsx(IconLoader2, { size: 10, className: "animate-spin" }), "Testing\u2026"] })) : ("Test") }), engineChanged && (_jsx("button", { onClick: handleApply, className: "rounded bg-accent px-2.5 py-1 text-[10px] font-medium text-foreground hover:bg-accent/80", children: "Apply" })), settingsStatus != null && (_jsxs(Tooltip, { children: [_jsx(TooltipTrigger, { asChild: true, children: _jsx("button", { onClick: handleDisconnect, className: "ml-auto rounded border border-border px-2.5 py-1 text-[10px] font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40", children: "Disconnect" }) }), _jsx(TooltipContent, { children: "Clear the saved engine \u2014 the app will fall back to the default until you re-apply." })] }))] }), testResult && testResult.ok && (_jsxs("p", { className: "flex items-center gap-1 text-[10px] text-green-500", children: [_jsx(IconCheck, { size: 10 }), "Test passed \u2014 ", testResult.latencyMs, "ms"] })), testResult && testResult.ok === false && (_jsxs("p", { className: "text-[10px] text-destructive", children: ["Test failed: ", testResult.error] })), disconnectError && (_jsxs("p", { className: "text-[10px] text-destructive", children: ["Disconnect failed: ", disconnectError] })), applyNote && (_jsx("p", { className: "text-[10px] text-muted-foreground", children: "Changes take effect on next conversation" }))] }) }))] })) }));
+}
+function friendlyAppName(appId) {
+    return appId
+        .split("-")
+        .filter(Boolean)
+        .map((part) => part[0]?.toUpperCase() + part.slice(1))
+        .join(" ");
+}
+function AppModelDefaultsSectionInner({ open, onToggle, }) {
+    const [settings, setSettings] = useState(null);
+    const [selectedEngine, setSelectedEngine] = useState("");
+    const [selectedModel, setSelectedModel] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [error, setError] = useState(null);
+    const load = useCallback(() => {
+        let cancelled = false;
+        setLoading(true);
+        fetch(agentNativePath("/_agent-native/agent-model-defaults"))
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+            if (cancelled || !data)
+                return;
+            setSettings(data);
+            const firstConfigured = data.engines.find((engine) => engine.configured) ?? data.engines[0];
+            const nextEngine = data.engine ?? firstConfigured?.name ?? "";
+            const nextEngineInfo = data.engines.find((engine) => engine.name === nextEngine) ??
+                firstConfigured;
+            setSelectedEngine(nextEngine);
+            setSelectedModel(data.model ?? nextEngineInfo?.defaultModel ?? "");
+        })
+            .catch(() => { })
+            .finally(() => {
+            if (!cancelled)
+                setLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+    useEffect(() => load(), [load]);
+    const selectedEngineInfo = settings?.engines.find((engine) => engine.name === selectedEngine) ?? null;
+    const engineOptions = (settings?.engines ?? [])
+        .filter((engine) => engine.name === selectedEngine ||
+        (engine.name !== "ai-sdk:anthropic" && engine.name !== "ai-sdk:ollama"))
+        .map((engine) => ({
+        value: engine.name,
+        label: engine.name === "builder"
+            ? "Builder.io Gateway"
+            : engine.label || engine.name,
+        description: engine.configured
+            ? "Configured for this workspace"
+            : "Credentials not detected yet",
+    }));
+    const modelOptions = latestModelsOnly(selectedEngineInfo?.supportedModels ?? []).map((model) => ({ value: model, label: friendlyModelName(model) }));
+    const hasPendingChange = !!settings &&
+        settings.canUpdate &&
+        !!selectedEngine &&
+        !!selectedModel.trim() &&
+        (selectedEngine !== settings.engine ||
+            selectedModel.trim() !== settings.model);
+    const hasAppDefault = settings?.source !== "default";
+    const scopeLabel = settings?.scope === "org"
+        ? settings.orgName
+            ? `${settings.orgName} organization`
+            : "organization"
+        : "your account";
+    const notifyChanged = () => {
+        window.dispatchEvent(new CustomEvent("agent-engine:configured-changed"));
+    };
+    const save = async () => {
+        if (!hasPendingChange)
+            return;
+        setSaving(true);
+        setSaved(false);
+        setError(null);
+        try {
+            const res = await fetch(agentNativePath("/_agent-native/agent-model-defaults"), {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    engine: selectedEngine,
+                    model: selectedModel.trim(),
+                }),
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok)
+                throw new Error(body?.error ?? `Save failed (${res.status})`);
+            const next = body;
+            setSettings(next);
+            setSelectedEngine(next.engine ?? selectedEngine);
+            setSelectedModel(next.model ?? selectedModel.trim());
+            setSaved(true);
+            notifyChanged();
+            setTimeout(() => setSaved(false), 2000);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "Save failed");
+        }
+        finally {
+            setSaving(false);
+        }
+    };
+    const reset = async () => {
+        if (!settings?.canUpdate || !hasAppDefault)
+            return;
+        setSaving(true);
+        setSaved(false);
+        setError(null);
+        try {
+            const res = await fetch(agentNativePath("/_agent-native/agent-model-defaults"), { method: "DELETE" });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok)
+                throw new Error(body?.error ?? `Reset failed (${res.status})`);
+            const next = body;
+            setSettings(next);
+            const fallback = next.engines.find((engine) => engine.configured);
+            setSelectedEngine(next.engine ?? fallback?.name ?? selectedEngine);
+            setSelectedModel(next.model ?? fallback?.defaultModel ?? selectedModel);
+            notifyChanged();
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "Reset failed");
+        }
+        finally {
+            setSaving(false);
+        }
+    };
+    return (_jsx(SettingsSection, { id: settingsSectionDomId("app-models"), icon: _jsx(IconApps, { size: 14 }), title: "App Default Model", subtitle: "Choose the default model for this app/template when no one-off composer model is selected.", connected: loading ? undefined : hasAppDefault, open: open, onToggle: onToggle, children: loading ? (_jsx(SettingsSkeleton, { lines: 2 })) : settings ? (_jsx("div", { className: "space-y-2", children: _jsxs("div", { className: "rounded-md border border-border bg-accent/20 px-2.5 py-2", children: [_jsxs("div", { className: "mb-2 flex items-center justify-between gap-2", children: [_jsxs("div", { className: "min-w-0", children: [_jsx("p", { className: "truncate text-[11px] font-medium text-foreground", children: friendlyAppName(settings.appId) || "This app" }), _jsx("p", { className: "mt-0.5 text-[10px] text-muted-foreground", children: hasAppDefault
+                                            ? `Applies to ${scopeLabel}.`
+                                            : "Using the global LLM default." })] }), _jsx("span", { className: "shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground", children: settings.source })] }), _jsxs("div", { className: "space-y-2", children: [_jsx(SettingsSelect, { label: "Provider", value: selectedEngine, options: engineOptions, onValueChange: (value) => {
+                                    setSelectedEngine(value);
+                                    const info = settings.engines.find((engine) => engine.name === value);
+                                    setSelectedModel(info?.defaultModel ?? "");
+                                    setError(null);
+                                } }), _jsxs("div", { className: "space-y-1.5", children: [_jsx("p", { className: "text-[12px] font-medium text-foreground", children: "Model" }), _jsx("input", { type: "text", list: `app-model-suggestions-${selectedEngine}`, value: selectedModel, disabled: !settings.canUpdate || saving, onChange: (event) => {
+                                            setSelectedModel(event.target.value);
+                                            setError(null);
+                                        }, onKeyDown: (event) => {
+                                            if (event.key === "Enter" && hasPendingChange)
+                                                void save();
+                                        }, placeholder: selectedEngineInfo?.defaultModel ?? "model-id", spellCheck: false, autoComplete: "off", className: "flex h-9 w-full rounded-md border border-border bg-background px-3 text-[12px] text-foreground outline-none transition-colors hover:bg-accent/40 focus:ring-1 focus:ring-accent placeholder:text-muted-foreground/50 disabled:opacity-60", style: CONTROL_STYLE }), modelOptions.length > 0 && (_jsx("datalist", { id: `app-model-suggestions-${selectedEngine}`, children: modelOptions.map((option) => (_jsx("option", { value: option.value, label: option.label }, option.value))) }))] }), _jsxs("div", { className: "flex items-center gap-1.5", children: [_jsx("button", { type: "button", onClick: save, disabled: !hasPendingChange || saving, className: "inline-flex h-8 items-center gap-1 rounded bg-accent px-2.5 text-[10px] font-medium text-foreground hover:bg-accent/80 disabled:opacity-40", children: saving ? (_jsx(IconLoader2, { size: 10, className: "animate-spin" })) : saved ? (_jsx(IconCheck, { size: 10 })) : ("Save") }), _jsx("button", { type: "button", onClick: reset, disabled: !settings.canUpdate || !hasAppDefault || saving, className: "h-8 rounded border border-border px-2.5 text-[10px] font-medium text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:opacity-40", children: "Reset" })] })] }), !settings.canUpdate && (_jsx("p", { className: "mt-2 text-[10px] text-muted-foreground", children: "Only organization owners and admins can change app model defaults." })), selectedEngineInfo && !selectedEngineInfo.configured && (_jsx("p", { className: "mt-2 text-[10px] text-muted-foreground", children: "Credentials for this provider were not detected; runtime will fall back if the model cannot be used." })), error && (_jsx("p", { className: "mt-2 text-[10px] text-destructive", children: error }))] }) })) : (_jsx("p", { className: "text-[10px] text-muted-foreground", children: "App model defaults are unavailable." })) }));
 }
 // ─── Email Section ──────────────────────────────────────────────────────────
 function EmailSectionInner({ open, onToggle, }) {
@@ -630,8 +775,10 @@ function AgentLimitsSectionInner({ open, onToggle, }) {
 const SETTINGS_SECTION_IDS = new Set([
     "account",
     "llm",
+    "app-models",
     "limits",
     "voice",
+    "demo-mode",
     "automations",
     "secrets",
     "hosting",
@@ -659,6 +806,11 @@ function normalizeSettingsSection(value) {
     }
     if (normalized === "agent-engine")
         return "llm";
+    if (normalized === "agent-model-defaults" ||
+        normalized === "app-model-defaults" ||
+        normalized === "models") {
+        return "app-models";
+    }
     if (normalized === "agent-limits" || normalized === "loop-settings") {
         return "limits";
     }
@@ -678,12 +830,12 @@ const environmentOptions = [
     {
         value: "production",
         label: "Production",
-        description: "App tools only; code, shell, and files require Builder or a local clone.",
+        description: "App tools only; code, bash, and files require Builder or a local clone.",
     },
     {
         value: "development",
         label: "Development",
-        description: "Full access to code editing, shell, and files.",
+        description: "Full access to code editing, bash, and files.",
     },
 ];
 function CapabilityStatusRow({ label, value, active, }) {
@@ -735,12 +887,15 @@ function AccountSectionInner({ open, onToggle, }) {
 export function SettingsPanel({ isDevMode, onToggleDevMode, showDevToggle, devAppUrl, initialSection, sectionRequestKey, }) {
     const { status: builder, loading: builderLoading } = useBuilderStatus();
     const connected = builder?.configured ?? false;
-    const connectUrl = builder?.connectUrl;
+    const connectUrl = builder?.cliAuthUrl ?? builder?.connectUrl;
     const orgName = builder?.orgName;
     const envManaged = !!builder?.envManaged;
     const credentialSource = builder?.credentialSource;
     const builderBranchesAvailable = !!builder?.builderEnabled;
-    const builderFlow = useBuilderConnectFlow({ popupUrl: connectUrl });
+    const builderFlow = useBuilderConnectFlow({
+        popupUrl: connectUrl,
+        trackingSource: "settings_panel_builder_card",
+    });
     // Detect whether the app registered any secrets — controls whether the
     // "API Keys & Connections" section renders at all.
     const [focusSecretKey, setFocusSecretKey] = useState(undefined);
@@ -795,6 +950,6 @@ export function SettingsPanel({ isDevMode, onToggleDevMode, showDevToggle, devAp
                         const nextIsDev = next === "development";
                         if (nextIsDev !== isDevMode)
                             onToggleDevMode();
-                    } })) })), _jsx(CapabilityStatusStrip, { isDevMode: isDevMode, builderConnected: connected, builderLoading: builderLoading, builderBranchesAvailable: builderBranchesAvailable, onOpenLlm: () => openSettingsSection("llm", true) }), _jsx(AccountSectionInner, { open: openSection === "account", onToggle: () => toggle("account") }), _jsx(LLMSectionInner, { builderFlow: builderFlow, builderLoading: builderLoading, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, open: openSection === "llm", onToggle: () => toggle("llm") }), _jsx(AgentLimitsSectionInner, { open: openSection === "limits", onToggle: () => toggle("limits") }), _jsx(SettingsSection, { icon: _jsx(IconMicrophone, { size: 14 }), title: "Voice Transcription", subtitle: "How the composer microphone turns your voice into text.", open: openSection === "voice", onToggle: () => toggle("voice"), children: _jsx(VoiceTranscriptionSection, {}) }), _jsx(SettingsSection, { icon: _jsx(IconBolt, { size: 14 }), title: "Automations", subtitle: "Event-triggered and scheduled automations.", open: openSection === "automations", onToggle: () => toggle("automations"), children: _jsx(AutomationsSection, {}) }), _jsx(SettingsSection, { id: settingsSectionDomId("secrets"), icon: _jsx(IconKey, { size: 14 }), title: "API Keys & Connections", subtitle: "Service credentials and automation keys.", open: openSection === "secrets", onToggle: () => toggle("secrets"), children: _jsx(SecretsSection, { focusKey: focusSecretKey }) }), _jsx(SettingsSection, { icon: _jsx(IconCloud, { size: 14 }), title: "Hosting", subtitle: "Deploy your app to the cloud.", connected: connected, open: openSection === "hosting", onToggle: () => toggle("hosting"), children: _jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource }), _jsx(ManualSetupCard, { hint: "Deploy manually to Netlify, Vercel, Cloudflare, or any Nitro-supported target.", docsUrl: "https://www.builder.io/c/docs/agent-native-deployment", dim: connected })] }) }), _jsx(SettingsSection, { icon: _jsx(IconDatabase, { size: 14 }), title: "Database", subtitle: "Connect a cloud database for persistent storage.", connected: connected, open: openSection === "database", onToggle: () => toggle("database"), children: _jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource }), _jsx(ManualSetupCard, { hint: "Set DATABASE_URL in your .env to connect Neon, Supabase, Turso, or any Postgres/SQLite database.", docsUrl: "https://www.builder.io/c/docs/agent-native-database", dim: connected })] }) }), _jsx(SettingsSection, { icon: _jsx(IconUpload, { size: 14 }), title: "File uploads", subtitle: "Where user-uploaded files (avatars, chat attachments) are stored.", connected: connected, open: openSection === "uploads", onToggle: () => toggle("uploads"), children: _jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource }), _jsx(ManualSetupCard, { hint: "Without a provider, files are stored as base64 in your database. Fine for dev, not recommended for production.", docsUrl: "https://www.builder.io/c/docs/agent-native-file-uploads", dim: connected })] }) }), _jsx(SettingsSection, { icon: _jsx(IconShield, { size: 14 }), title: "Authentication", subtitle: "Set up user authentication and access control.", connected: connected, open: openSection === "auth", onToggle: () => toggle("auth"), children: _jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource }), _jsx(ManualSetupCard, { hint: "Configure Better Auth with BETTER_AUTH_SECRET and optional Google/GitHub OAuth providers.", docsUrl: "https://www.builder.io/c/docs/agent-native-authentication", dim: connected })] }) }), _jsx(EmailSectionInner, { open: openSection === "email", onToggle: () => toggle("email") }), _jsx(SettingsSection, { icon: _jsx(IconBrowser, { size: 14 }), title: "Browser Automation", subtitle: "Let agents control a real browser for web tasks.", connected: connected, open: openSection === "browser", onToggle: () => toggle("browser"), children: _jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource }) }), builderBranchesAvailable && (_jsx(SettingsSection, { icon: _jsx(IconGitBranch, { size: 14 }), title: "Background Agent", subtitle: "Make code changes from production mode via Builder.", connected: connected, open: openSection === "background", onToggle: () => toggle("background"), children: _jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource }) })), _jsx(SettingsSection, { icon: _jsx(IconPlugConnected, { size: 14 }), title: "Integrations", subtitle: "Connect messaging platforms and external services.", open: openSection === "integrations", onToggle: () => toggle("integrations"), children: _jsx(Suspense, { fallback: null, children: _jsx(IntegrationsPanel, {}) }) }), _jsx(SettingsSection, { icon: _jsx(IconCoin, { size: 14 }), title: "Usage", subtitle: "Track token consumption and estimated cost \u2014 broken down by chat, automations, and background jobs.", open: openSection === "usage", onToggle: () => toggle("usage"), children: _jsx(UsageSection, {}) }), _jsx(SettingsSection, { icon: _jsx(IconTopologyRing2, { size: 14 }), title: "Connected Agents (A2A)", subtitle: "Manage remote agents connected via the A2A protocol.", open: openSection === "a2a", onToggle: () => toggle("a2a"), children: _jsx(AgentsSection, {}) })] }));
+                    } })) })), _jsx(CapabilityStatusStrip, { isDevMode: isDevMode, builderConnected: connected, builderLoading: builderLoading, builderBranchesAvailable: builderBranchesAvailable, onOpenLlm: () => openSettingsSection("llm", true) }), _jsx(AccountSectionInner, { open: openSection === "account", onToggle: () => toggle("account") }), _jsx(LLMSectionInner, { builderFlow: builderFlow, builderLoading: builderLoading, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, open: openSection === "llm", onToggle: () => toggle("llm") }), _jsx(AppModelDefaultsSectionInner, { open: openSection === "app-models", onToggle: () => toggle("app-models") }), _jsx(AgentLimitsSectionInner, { open: openSection === "limits", onToggle: () => toggle("limits") }), _jsx(SettingsSection, { icon: _jsx(IconMicrophone, { size: 14 }), title: "Voice Transcription", subtitle: "How the composer microphone turns your voice into text.", open: openSection === "voice", onToggle: () => toggle("voice"), children: _jsx(VoiceTranscriptionSection, {}) }), _jsx(SettingsSection, { icon: _jsx(IconEyeOff, { size: 14 }), title: "Demo mode", subtitle: "Replace names, emails, and numbers with realistic fake data everywhere \u2014 in the UI and what the agent sees. IDs and structure are preserved so the app keeps working.", open: openSection === "demo-mode", onToggle: () => toggle("demo-mode"), children: _jsx(DemoModeSection, {}) }), _jsx(SettingsSection, { icon: _jsx(IconBolt, { size: 14 }), title: "Automations", subtitle: "Event-triggered and scheduled automations.", open: openSection === "automations", onToggle: () => toggle("automations"), children: _jsx(AutomationsSection, {}) }), _jsx(SettingsSection, { id: settingsSectionDomId("secrets"), icon: _jsx(IconKey, { size: 14 }), title: "API Keys & Connections", subtitle: "Service credentials and automation keys.", open: openSection === "secrets", onToggle: () => toggle("secrets"), children: _jsx(SecretsSection, { focusKey: focusSecretKey }) }), _jsx(SettingsSection, { icon: _jsx(IconCloud, { size: 14 }), title: "Hosting", subtitle: "Deploy your app to the cloud.", connected: connected, open: openSection === "hosting", onToggle: () => toggle("hosting"), children: _jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, trackingSource: "hosting_settings", trackingFlow: "hosting" }), _jsx(ManualSetupCard, { hint: "Deploy manually to Netlify, Vercel, Cloudflare, or any Nitro-supported target.", docsUrl: "https://www.builder.io/c/docs/agent-native-deployment", dim: connected })] }) }), _jsx(SettingsSection, { icon: _jsx(IconDatabase, { size: 14 }), title: "Database", subtitle: "Connect a cloud database for persistent storage.", connected: connected, open: openSection === "database", onToggle: () => toggle("database"), children: _jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, trackingSource: "database_settings", trackingFlow: "database" }), _jsx(ManualSetupCard, { hint: "Set DATABASE_URL in your .env to connect Neon, Supabase, Turso, or any Postgres/SQLite database.", docsUrl: "https://www.builder.io/c/docs/agent-native-database", dim: connected })] }) }), _jsx(SettingsSection, { icon: _jsx(IconUpload, { size: 14 }), title: "File uploads", subtitle: "Where user-uploaded files (avatars, chat attachments) are stored.", connected: connected, open: openSection === "uploads", onToggle: () => toggle("uploads"), children: _jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, trackingSource: "file_upload_settings", trackingFlow: "file_upload" }), _jsx(ManualSetupCard, { hint: "Without a provider, files are stored as base64 in your database. Fine for dev, not recommended for production.", docsUrl: "https://www.builder.io/c/docs/agent-native-file-uploads", dim: connected })] }) }), _jsx(SettingsSection, { icon: _jsx(IconShield, { size: 14 }), title: "Authentication", subtitle: "Set up user authentication and access control.", connected: connected, open: openSection === "auth", onToggle: () => toggle("auth"), children: _jsxs("div", { className: "space-y-2", children: [_jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, trackingSource: "auth_settings", trackingFlow: "auth" }), _jsx(ManualSetupCard, { hint: "Configure Better Auth with BETTER_AUTH_SECRET and optional Google/GitHub OAuth providers.", docsUrl: "https://www.builder.io/c/docs/agent-native-authentication", dim: connected })] }) }), _jsx(EmailSectionInner, { open: openSection === "email", onToggle: () => toggle("email") }), _jsx(SettingsSection, { icon: _jsx(IconBrowser, { size: 14 }), title: "Browser Automation", subtitle: "Let agents control a real browser for web tasks.", connected: connected, open: openSection === "browser", onToggle: () => toggle("browser"), children: _jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, trackingSource: "browser_settings", trackingFlow: "browser_automation" }) }), builderBranchesAvailable && (_jsx(SettingsSection, { icon: _jsx(IconGitBranch, { size: 14 }), title: "Background Agent", subtitle: "Make code changes from production mode via Builder.", connected: connected, open: openSection === "background", onToggle: () => toggle("background"), children: _jsx(UseBuilderCard, { builderFlow: builderFlow, connectUrl: connectUrl, connected: connected, orgName: orgName, envManaged: envManaged, credentialSource: credentialSource, trackingSource: "background_agent_settings", trackingFlow: "background_agent" }) })), _jsx(SettingsSection, { icon: _jsx(IconPlugConnected, { size: 14 }), title: "Integrations", subtitle: "Connect messaging platforms and external services.", open: openSection === "integrations", onToggle: () => toggle("integrations"), children: _jsx(Suspense, { fallback: null, children: _jsx(IntegrationsPanel, {}) }) }), _jsx(SettingsSection, { icon: _jsx(IconCoin, { size: 14 }), title: "Usage", subtitle: "Track token consumption and estimated cost \u2014 broken down by chat, automations, and background jobs.", open: openSection === "usage", onToggle: () => toggle("usage"), children: _jsx(UsageSection, {}) }), _jsx(SettingsSection, { icon: _jsx(IconTopologyRing2, { size: 14 }), title: "Connected Agents (A2A)", subtitle: "Manage remote agents connected via the A2A protocol.", open: openSection === "a2a", onToggle: () => toggle("a2a"), children: _jsx(AgentsSection, {}) })] }));
 }
 //# sourceMappingURL=SettingsPanel.js.map

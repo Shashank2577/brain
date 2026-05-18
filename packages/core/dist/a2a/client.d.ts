@@ -18,6 +18,13 @@ export declare class A2ATaskTimeoutError extends Error {
 export declare function signA2AToken(email: string, orgDomain?: string, orgSecret?: string, options?: {
     expiresIn?: string | number;
     preferGlobalSecret?: boolean;
+    /**
+     * Extra JWT claims to merge alongside `sub` / `org_domain`. Used by the
+     * MCP connect flow to add a revocable `jti` and a `scope: "mcp-connect"`
+     * marker. Reserved claims (`sub`, `org_domain`) cannot be overridden —
+     * they are spread last so a caller can never spoof identity via this map.
+     */
+    extraClaims?: Record<string, unknown>;
 }): Promise<string>;
 export declare class A2AClient {
     private baseUrl;

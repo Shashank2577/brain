@@ -3,6 +3,7 @@ import type { H3AppShim } from "./framework-request-handler.js";
 type H3App = H3AppShim;
 import type { BetterAuthConfig } from "./better-auth-instance.js";
 import type { GoogleAuthMode } from "./google-auth-mode.js";
+import { type WorkspaceAppAudience } from "../shared/workspace-app-audience.js";
 /**
  * Get the configured session max age. Desktop SSO broker writes from
  * OAuth flows read this so expiration stays consistent with the cookie.
@@ -33,6 +34,27 @@ export interface AuthOptions {
      * Both page routes and API routes can be made public.
      */
     publicPaths?: string[];
+    /**
+     * Workspace-level audience for the app.
+     *
+     * "internal" keeps the existing behavior: every app page requires an
+     * authenticated workspace member unless listed in publicPaths.
+     *
+     * "public" lets unauthenticated visitors load page routes, while framework
+     * and API routes remain protected unless explicitly listed in publicPaths.
+     */
+    workspaceAppAudience?: WorkspaceAppAudience;
+    /**
+     * Workspace app page paths that anonymous visitors can load.
+     * Uses the same prefix matching as publicPaths, but only for page routes:
+     * framework, API, and .well-known routes stay protected.
+     */
+    workspaceAppPublicPaths?: string[];
+    /**
+     * Workspace app page paths that still require auth when the app audience is
+     * public. Useful for public sites with login-only admin/management pages.
+     */
+    workspaceAppProtectedPaths?: string[];
     /**
      * Custom login page HTML. When provided, this HTML is served to
      * unauthenticated page requests instead of the built-in login form.
@@ -101,11 +123,10 @@ export interface AuthOptions {
     /**
      * Google sign-in flow: `'popup'`, `'redirect'`, or `'auto'` (default).
      *
-     * - `'auto'` — popup in normal browsers, redirect in Electron. Always uses
-     *   popup inside the Builder.io browser iframe (Google blocks framing).
+     * - `'auto'` — popup in normal browsers and Builder web iframes, redirect in
+     *   Electron and Builder desktop preview/editor surfaces.
      * - `'popup'` — force popup everywhere.
-     * - `'redirect'` — force redirect everywhere except the Builder.io browser
-     *   iframe, which stays popup for technical reasons.
+     * - `'redirect'` — force redirect everywhere.
      *
      * Falls back to the `GOOGLE_AUTH_MODE` env var, then `'auto'`.
      */
@@ -148,6 +169,40 @@ export declare function isDevEnvironment(): boolean;
  * Exported for unit tests.
  */
 export declare function safeReturnPath(raw: string | null | undefined): string;
+/**
+ * Return the configured login HTML for this request, or `null` when no auth
+ * guard is installed. Used by the `/_agent-native/open` deep-link route to
+ * serve the same sign-in form the auth guard would — at the original deep
+ * link URL — so the login form's `window.location.replace(href)` success
+ * handler reloads the same URL and the (now authenticated) open route
+ * proceeds. Mirrors the rawPath/getLoginHtml resolution in the auth guard.
+ */
+export declare function getConfiguredLoginHtml(event: H3Event): string | null;
+/**
+ * True only when the request originates from the local machine — the raw
+ * socket peer is `127.0.0.0/8`, `::1`, or the IPv4-mapped `::ffff:127.0.0.1`
+ * (an optional IPv6 zone id like `fe80::1%en0` is stripped first).
+ *
+ * `getRequestIP(event)` is called WITHOUT `{ xForwardedFor: true }`, so it
+ * returns the real connection peer and never an attacker-controlled
+ * `X-Forwarded-For` value — a remote client cannot spoof its way past this.
+ * Used to scope local-only conveniences (the desktop SSO broker and the dev
+ * auto-account) so a directly network-reachable dev server never exposes
+ * them to a remote visitor. NOTE: a reverse proxy / tunnel that connects to
+ * the dev server over localhost still appears as loopback, so this is a
+ * necessary but not sufficient gate — callers pair it with NODE_ENV and,
+ * for the dev account, a throwaway per-DB password.
+ */
+export declare function isLoopbackAddress(ip: string | undefined): boolean;
+/**
+ * True when the request's actual socket peer is loopback. Uses
+ * `getRequestIP(event)` WITHOUT `{ xForwardedFor: true }`, so it reflects the
+ * real connecting IP and a remote client cannot spoof it via the `Host` /
+ * `X-Forwarded-*` headers. Use this — not a parsed `Host`-header origin — for
+ * any "is this local dev?" security gate (MCP/connect dev-open).
+ */
+export declare function isLoopbackRequest(event: H3Event): boolean;
+export declare function isExpectedAuthFailure(error: unknown): boolean;
 /**
  * Create a new session in the legacy sessions table.
  * Used by google-oauth.ts for mobile deep linking.
