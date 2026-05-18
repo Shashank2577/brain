@@ -1,0 +1,1 @@
+{"version":3,"file":"dispatch-shell.d.ts","sourceRoot":"","sources":["../../src/components/dispatch-shell.tsx"],"names":[],"mappings":"AAAA,OAAO,EAAE,KAAK,SAAS,EAAE,MAAM,OAAO,CAAC;AASvC;;;;;GAKG;AACH,wBAAgB,aAAa,CAAC,EAC5B,KAAK,EACL,WAAW,EACX,QAAQ,GACT,EAAE;IACD,KAAK,EAAE,MAAM,CAAC;IACd,WAAW,CAAC,EAAE,MAAM,CAAC;IACrB,QAAQ,EAAE,SAAS,CAAC;CACrB,2CA8BA"}

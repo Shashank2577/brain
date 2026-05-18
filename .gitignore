@@ -2,6 +2,9 @@ node_modules
 dist
 # Exception: core dist must be committed so Netlify can deploy without building it
 !packages/core/dist
+!packages/dispatch/dist
+!packages/scheduling/dist
+!packages/pinpoint/dist
 .generated
 .superpowers
 docs/superpowers

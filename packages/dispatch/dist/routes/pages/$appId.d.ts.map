@@ -1,0 +1,1 @@
+{"version":3,"file":"$appId.d.ts","sourceRoot":"","sources":["../../../src/routes/pages/$appId.tsx"],"names":[],"mappings":"AACA,OAAO,EAKL,KAAK,wBAAwB,EAC7B,KAAK,kBAAkB,EACxB,MAAM,cAAc,CAAC;AAiBtB,wBAAgB,IAAI;;IAEnB;AA2CD,wBAAgB,MAAM,CAAC,EAAE,MAAM,EAAE,EAAE,kBAAkB,OAQpD;AAED,wBAAsB,YAAY,CAAC,EACjC,MAAM,EACN,YAAY,GACb,EAAE,wBAAwB,oBAS1B;AAED,MAAM,CAAC,OAAO,UAAU,yBAAyB,4CAgGhD"}

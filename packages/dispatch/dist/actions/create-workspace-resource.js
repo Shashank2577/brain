@@ -1,0 +1,24 @@
+import { defineAction } from "@agent-native/core";
+import { z } from "zod";
+import { createWorkspaceResource } from "../server/lib/workspace-resources-store.js";
+export default defineAction({
+    description: 'Create a workspace-wide skill, instruction, agent profile, or knowledge pack. Set scope to "all" to push to every app, or "selected" to grant per-app.',
+    schema: z.object({
+        kind: z
+            .enum(["skill", "instruction", "agent", "knowledge"])
+            .describe("Resource kind: skill, instruction, agent, or knowledge"),
+        name: z.string().describe("Human-readable name"),
+        description: z.string().optional().describe("Short description"),
+        path: z
+            .string()
+            .describe('Resource path, e.g. "skills/designer.md", "agents/researcher.md", "context/gtm-messaging.md", or "remote-agents/researcher.json"'),
+        content: z
+            .string()
+            .describe("Full resource content (markdown or remote-agent JSON)"),
+        scope: z
+            .enum(["all", "selected"])
+            .describe('"all" = push to every app, "selected" = only apps with explicit grants'),
+    }),
+    run: async (args) => createWorkspaceResource(args),
+});
+//# sourceMappingURL=create-workspace-resource.js.map
