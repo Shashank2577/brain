@@ -40,5 +40,7 @@ export default createAuthPlugin({
     "/api/bookings/available-slots",
     "/api/bookings/create",
     "/api/public",
+    "/_agent-native/auth/ba/callback/google",
+    "/_agent-native/google/callback",
   ],
 });

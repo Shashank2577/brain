@@ -164,8 +164,8 @@ export function getAuthUrl(
   const uri =
     redirectUri ||
     (origin
-      ? `${origin}/_agent-native/google/callback`
-      : "http://localhost:8080/_agent-native/google/callback");
+      ? `${origin}/_agent-native/auth/ba/callback/google`
+      : "http://localhost:8080/_agent-native/auth/ba/callback/google");
   const oauth2 = createOAuth2Client(clientId, clientSecret, uri);
   return oauth2.generateAuthUrl({
     access_type: "offline",
@@ -217,8 +217,8 @@ export async function exchangeCode(
   const uri =
     redirectUri ||
     (origin
-      ? `${origin}/_agent-native/google/callback`
-      : "http://localhost:8080/_agent-native/google/callback");
+      ? `${origin}/_agent-native/auth/ba/callback/google`
+      : "http://localhost:8080/_agent-native/auth/ba/callback/google");
   const oauth2 = createOAuth2Client(clientId, clientSecret, uri);
   const tokenResponse = await oauth2.getToken(code);
 

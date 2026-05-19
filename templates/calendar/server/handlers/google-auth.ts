@@ -103,7 +103,10 @@ export const getGoogleAuthUrl = defineEventHandler(async (event: H3Event) => {
   }
   try {
     const q = getQuery(event);
-    const redirectUri = resolveOAuthRedirectUri(event);
+    const redirectUri = resolveOAuthRedirectUri(
+      event,
+      "/_agent-native/auth/ba/callback/google",
+    );
     if (!redirectUri) {
       setResponseStatus(event, 400);
       return {
@@ -145,7 +148,7 @@ export const handleGoogleCallback = defineEventHandler(
       const query = getQuery(event);
       const state = decodeOAuthState(
         query.state as string | undefined,
-        getAppUrl(event, "/_agent-native/google/callback"),
+        getAppUrl(event, "/_agent-native/auth/ba/callback/google"),
       );
       desktop = state.desktop;
       flowId = state.flowId;
@@ -233,7 +236,10 @@ export const getGoogleAddAccountUrl = defineEventHandler(
     }
     try {
       const q = getQuery(event);
-      const redirectUri = resolveOAuthRedirectUri(event);
+      const redirectUri = resolveOAuthRedirectUri(
+        event,
+        "/_agent-native/auth/ba/callback/google",
+      );
       if (!redirectUri) {
         setResponseStatus(event, 400);
         return {
