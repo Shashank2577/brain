@@ -87,7 +87,9 @@ export function useGoogleAuthUrl(enabled = false) {
   const query = useQuery<{ url: string }>({
     queryKey: ["google-auth-url"],
     queryFn: async () => {
-      const redirectUri = oauthRedirectUri("/_agent-native/google/callback");
+      const redirectUri = oauthRedirectUri(
+        "/_agent-native/auth/ba/callback/google",
+      );
       return fetchJson<{ url: string }>(
         agentNativePath(
           `/_agent-native/google/auth-url?redirect_uri=${encodeURIComponent(redirectUri)}`,
@@ -114,7 +116,9 @@ export function useGoogleAddAccountUrl(enabled = false) {
   const query = useQuery<{ url: string }>({
     queryKey: ["google-add-account-url"],
     queryFn: async () => {
-      const redirectUri = oauthRedirectUri("/_agent-native/google/callback");
+      const redirectUri = oauthRedirectUri(
+        "/_agent-native/auth/ba/callback/google",
+      );
       return fetchJson<{ url: string }>(
         agentNativePath(
           `/_agent-native/google/add-account/auth-url?redirect_uri=${encodeURIComponent(redirectUri)}`,

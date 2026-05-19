@@ -93,7 +93,9 @@ export function useGoogleAuthUrl(enabled = false) {
   const query = useQuery<{ url: string }>({
     queryKey: ["google-auth-url"],
     queryFn: async () => {
-      const redirectUri = oauthRedirectUri("/_agent-native/google/callback");
+      const redirectUri = oauthRedirectUri(
+        "/_agent-native/auth/ba/callback/google",
+      );
       const returnPath = `${window.location.pathname}${window.location.search}`;
       return fetchJson<{ url: string }>(
         agentNativePath(
@@ -120,7 +122,9 @@ export function useGoogleAddAccountUrl(enabled = false) {
   const query = useQuery<{ url: string }>({
     queryKey: ["google-add-account-url"],
     queryFn: async () => {
-      const redirectUri = oauthRedirectUri("/_agent-native/google/callback");
+      const redirectUri = oauthRedirectUri(
+        "/_agent-native/auth/ba/callback/google",
+      );
       // Use the main callback URL — the server-side state param carries the
       // add-account flag so only one redirect URI needs Google Console registration.
       return fetchJson<{ url: string }>(

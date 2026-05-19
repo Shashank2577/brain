@@ -63,7 +63,7 @@ export function GoogleSetupWizard() {
 
   const redirectUri =
     typeof window !== "undefined"
-      ? oauthRedirectUri("/_agent-native/google/callback")
+      ? oauthRedirectUri("/_agent-native/auth/ba/callback/google")
       : "";
 
   const fetchStatus = useCallback(async () => {

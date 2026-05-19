@@ -124,7 +124,7 @@ export function GoogleConnectBanner({
       ? "/_agent-native/google/add-account/auth-url"
       : "/_agent-native/google/auth-url";
     const redirectUri = encodeURIComponent(
-      oauthRedirectUri("/_agent-native/google/callback"),
+      oauthRedirectUri("/_agent-native/auth/ba/callback/google"),
     );
     window.open(
       `${origin}${agentNativePath(endpoint)}?redirect_uri=${redirectUri}&desktop=1&flow_id=${flowId}&redirect=1`,
@@ -180,7 +180,9 @@ export function GoogleConnectBanner({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const redirectUri = oauthRedirectUri("/_agent-native/google/callback");
+  const redirectUri = oauthRedirectUri(
+    "/_agent-native/auth/ba/callback/google",
+  );
 
   const fetchStatus = useCallback(async () => {
     try {
