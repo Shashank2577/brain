@@ -2247,6 +2247,7 @@ async function mountBetterAuthRoutes(
     setGenericGoogleOAuthRoutesEnabled(app, true);
     for (const gp of [
       "/_agent-native/google/callback",
+      "/_agent-native/auth/ba/callback/google",
       "/_agent-native/google/auth-url",
     ]) {
       if (!publicPaths.includes(gp)) publicPaths.push(gp);
@@ -2271,7 +2272,10 @@ async function mountBetterAuthRoutes(
         // `/_agent-native/...`). Reject anything else so an attacker can't
         // smuggle a different already-registered redirect URI past Google's
         // host-prefix matching. See HIGH-1 in 09-oauth-session.md.
-        const redirectUri = resolveOAuthRedirectUri(event);
+        const redirectUri = resolveOAuthRedirectUri(
+          event,
+          "/_agent-native/auth/ba/callback/google",
+        );
         if (redirectUri === null) {
           setResponseStatus(event, 400);
           return { error: "Invalid redirect_uri" };
@@ -2339,8 +2343,7 @@ async function mountBetterAuthRoutes(
       }),
     );
 
-    app.use(
-      "/_agent-native/google/callback",
+    const googleCallbackHandler = (callbackPath: string) =>
       defineEventHandler(async (event) => {
         if (!areGenericGoogleOAuthRoutesEnabled(app)) return undefined;
         if (getMethod(event) !== "GET") {
@@ -2356,7 +2359,7 @@ async function mountBetterAuthRoutes(
           const code = query.code as string;
           const { redirectUri, desktop, returnUrl, flowId } = decodeOAuthState(
             query.state as string | undefined,
-            getAppUrl(event, "/_agent-native/google/callback"),
+            getAppUrl(event, callbackPath),
           );
           callbackFlowId = flowId;
           callbackDesktop = desktop;
@@ -2508,7 +2511,21 @@ async function mountBetterAuthRoutes(
           });
           return oauthErrorPage(`Connection failed: ${msg}`);
         }
-      }),
+      });
+
+    // Mount the callback handler at both paths so either registered redirect
+    // URI in Google Console works. The primary path used for new auth requests
+    // is /_agent-native/auth/ba/callback/google (matching Better Auth's
+    // conventional path). The legacy path /_agent-native/google/callback is
+    // kept as an alias for backward compatibility with existing sessions and
+    // local dev URIs already registered in Google Console.
+    app.use(
+      "/_agent-native/auth/ba/callback/google",
+      googleCallbackHandler("/_agent-native/auth/ba/callback/google"),
+    );
+    app.use(
+      "/_agent-native/google/callback",
+      googleCallbackHandler("/_agent-native/google/callback"),
     );
   }
 

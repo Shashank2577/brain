@@ -1816,6 +1816,7 @@ async function mountBetterAuthRoutes(app, options) {
         setGenericGoogleOAuthRoutesEnabled(app, true);
         for (const gp of [
             "/_agent-native/google/callback",
+            "/_agent-native/auth/ba/callback/google",
             "/_agent-native/google/auth-url",
         ]) {
             if (!publicPaths.includes(gp))
@@ -1838,7 +1839,7 @@ async function mountBetterAuthRoutes(app, options) {
             // `/_agent-native/...`). Reject anything else so an attacker can't
             // smuggle a different already-registered redirect URI past Google's
             // host-prefix matching. See HIGH-1 in 09-oauth-session.md.
-            const redirectUri = resolveOAuthRedirectUri(event);
+            const redirectUri = resolveOAuthRedirectUri(event, "/_agent-native/auth/ba/callback/google");
             if (redirectUri === null) {
                 setResponseStatus(event, 400);
                 return { error: "Invalid redirect_uri" };
@@ -1901,7 +1902,7 @@ async function mountBetterAuthRoutes(app, options) {
             }
             return { url: authUrl };
         }));
-        app.use("/_agent-native/google/callback", defineEventHandler(async (event) => {
+        const googleCallbackHandler = (callbackPath) => defineEventHandler(async (event) => {
             if (!areGenericGoogleOAuthRoutesEnabled(app))
                 return undefined;
             if (getMethod(event) !== "GET") {
@@ -1916,7 +1917,7 @@ async function mountBetterAuthRoutes(app, options) {
             try {
                 const query = getQuery(event);
                 const code = query.code;
-                const { redirectUri, desktop, returnUrl, flowId } = decodeOAuthState(query.state, getAppUrl(event, "/_agent-native/google/callback"));
+                const { redirectUri, desktop, returnUrl, flowId } = decodeOAuthState(query.state, getAppUrl(event, callbackPath));
                 callbackFlowId = flowId;
                 callbackDesktop = desktop;
                 logGoogleOAuthDebug(event, "callback-start", {
@@ -2053,7 +2054,15 @@ async function mountBetterAuthRoutes(app, options) {
                 });
                 return oauthErrorPage(`Connection failed: ${msg}`);
             }
-        }));
+        });
+        // Mount the callback handler at both paths so either registered redirect
+        // URI in Google Console works. The primary path used for new auth requests
+        // is /_agent-native/auth/ba/callback/google (matching Better Auth's
+        // conventional path). The legacy path /_agent-native/google/callback is
+        // kept as an alias for backward compatibility with existing sessions and
+        // local dev URIs already registered in Google Console.
+        app.use("/_agent-native/auth/ba/callback/google", googleCallbackHandler("/_agent-native/auth/ba/callback/google"));
+        app.use("/_agent-native/google/callback", googleCallbackHandler("/_agent-native/google/callback"));
     }
     // Desktop OAuth exchange — native apps (Tauri tray, Electron) open OAuth
     // in the system browser but need a way to retrieve the session token

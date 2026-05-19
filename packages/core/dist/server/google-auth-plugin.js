@@ -448,6 +448,7 @@ export function createGoogleAuthPlugin(options) {
     return createAuthPlugin({
         publicPaths: [
             "/_agent-native/google/callback",
+            "/_agent-native/auth/ba/callback/google",
             "/_agent-native/google/auth-url",
             "/_agent-native/auth/ba",
             ...(options?.publicPaths ?? []),
